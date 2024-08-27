@@ -21,10 +21,5 @@ asgiref = "*"
 tenacity = "*"
 tokenizers = "*"
 
-
 [tool.poetry.group.dev.dependencies]
 black = "*"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
