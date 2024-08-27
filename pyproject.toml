@@ -7,7 +7,7 @@ dependencies = [
     "banana-dev",
     "anthropic",
     "tiktoken",
-    "python-dotenv"
+    "python-dotenv",
     "replicate",
     "asgiref",
     "tenacity",
