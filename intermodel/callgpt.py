@@ -24,7 +24,6 @@ MODEL_ALIASES = {}
 MODEL_TO_AUTHOR = {
     "flan-t5-xxl": "google",
 }
-MODEL_TO_BANANA_MODEL_KEY = {}
 untokenizable = set()
 
 try:
@@ -209,38 +208,6 @@ async def complete(
                     **kwargs,
                 },
             )
-    elif vendor == "banana":
-        import banana_dev as banana
-
-        # this is not a complete implementation
-        api_response = banana.run(
-            kwargs.get("banana_api_key", os.getenv("BANANA_API_KEY")),
-            MODEL_TO_BANANA_MODEL_KEY[model],
-            model_inputs={
-                "prompt": prompt,
-                "max_new_tokens": max_tokens,
-                "do_sample": True,
-                "top_p": top_p,
-                "top_k": top_k,
-                "temperature": temperature,
-                "repetition_penalty": repetition_penalty,
-                **kwargs,
-            },
-        )
-        return {
-            "prompt": {"text": prompt},
-            "completions": [
-                {"text": model_output["text"]}
-                for model_output in api_response["modelOutputs"]
-            ],
-            "model": model,
-            "id": api_response["id"],
-            "created": api_response["created"],
-            "usage": {
-                # "completion_tokens": sum([len(output['generated_text_tokens']) for output in api_response['modelOutputs']]),
-                "vendor": vendor,
-            },
-        }
     elif vendor == "forefront":
         import httpx
 
@@ -466,9 +433,6 @@ def pick_vendor(model, custom_config=None):
         return "ai21"
     elif "forefront" in model:
         return "forefront"
-    elif "t5" in model:
-        # this should determine based on the specific model
-        return "banana"
     elif model.startswith("claude-"):
         return "anthropic"
     else:

@@ -4,7 +4,6 @@ version = "0.0.43"
 dependencies = [
     "openai==0.28",
     "httpx",
-    "banana-dev",
     "anthropic",
     "tiktoken",
     "python-dotenv",
