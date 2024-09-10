@@ -473,6 +473,12 @@ def max_token_length(model):
         return int(18_000 * 0.7)
     elif model.startswith("claude-3"):
         return 200_000 * 0.7
+    elif model.startswith("claude-2.1"):
+        return 200_000 * 0.7
+    elif model.startswith("claude-2"):
+        return 100_000 * 0.7
+    elif model.startswith("claude"):
+        return 100_000 * 0.7
     elif (
         "ada" in model
         or "babbage" in model
