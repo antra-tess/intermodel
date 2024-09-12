@@ -6,7 +6,7 @@ if typing.TYPE_CHECKING:
 hf_tokenizers = {}
 
 
-def get_hf_tokenizer(hf_name) -> 'Tokenizer':
+def get_hf_tokenizer(hf_name) -> "Tokenizer":
     if hf_name in hf_tokenizers:
         return hf_tokenizers[hf_name]
     else:

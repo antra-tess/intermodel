@@ -82,18 +82,13 @@ def fake_local(
         raise TypeError("prompt is of invalid type")
 
     return {
-        "prompt": {
-            "text": prompt_text
-        },
+        "prompt": {"text": prompt_text},
         "completions": [
             {
                 "text": completion,
                 "finish_reason": {
                     "reason": (
-                        "length"
-                        if len(encode(completion))
-                        == max_tokens
-                        else "stop"
+                        "length" if len(encode(completion)) == max_tokens else "stop"
                     )
                 },
             }
@@ -107,8 +102,7 @@ def fake_local(
             "prompt_tokens": max(prompt_length, 1),
             # if the completion is empty, the value will be missing
             "completion_tokens": completion_tokens,
-            "charged_tokens": prompt_length
-            + completion_tokens,
+            "charged_tokens": prompt_length + completion_tokens,
             "vendor": vendor,
         },
     }

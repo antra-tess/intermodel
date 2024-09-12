@@ -7,7 +7,7 @@ import datetime
 import os
 import uuid
 import hashlib
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Iterable
 
 import openai
 import tenacity
@@ -100,9 +100,7 @@ async def complete(
             or model.startswith("gpt-4")
             and not model.endswith("-base")
         ):
-            api_arguments["messages"] = [
-                {"role": "user", "content": api_arguments["prompt"]}
-            ]
+            api_arguments["messages"] = format_messages(api_arguments["prompt"], "user")
             if "prompt" in api_arguments:
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
@@ -321,6 +319,79 @@ async def complete(
         raise NotImplementedError(f"Unknown vendor {vendor}")
 
 
+SWITCH_ROLE_START = ["<|start_header_id|>", "<|im_start|>"]
+SWITCH_ROLE_END = ["<|end_header_id|>", "<|im_sep|>"]
+END_TURN = ["<|eot_id|>", "<|im_end|>"]
+SET_NAME_START = ["<|name_start|>"]
+SET_NAME_END = ["<|name_end|>"]
+ALL_DELIMITERS = (
+    SWITCH_ROLE_START + SWITCH_ROLE_END + END_TURN + SET_NAME_START + SET_NAME_END
+)
+
+
+def split_many(string: str, delimiters: Iterable[str]) -> List[str]:
+    # Escape special regex characters and join delimiters with '|'
+    pattern = "(" + "|".join(re.escape(d) for d in delimiters) + ")"
+    # Split the string
+    result = re.split(pattern, string)
+    # Remove empty strings from the result
+    return [part.strip() for part in result if part.strip()]
+
+
+def format_messages(
+    string: str, initial_role, initial_name=None, sticky_name=True
+) -> list:
+    role = initial_role
+    name = initial_name
+    substrings = split_many(string, ALL_DELIMITERS)
+    i = 0
+    messages = []
+    cur_message_content = ""
+    while i < len(substrings):
+        substring = substrings[i]
+        if substring in SWITCH_ROLE_START:
+            sofar = ""
+            j = i + 1
+            while j < len(substrings):
+                search = substrings[j]
+                if search in SWITCH_ROLE_END:
+                    role = sofar
+                    break
+                else:
+                    sofar += substrings[j]
+                j += 1
+            i = j
+        elif substring in SET_NAME_START:
+            sofar = ""
+            j = i + 1
+            while j < len(substrings):
+                search = substrings[j]
+                if search in SET_NAME_END:
+                    name = sofar
+                    break
+                else:
+                    sofar += substrings[j]
+                j += 1
+            i = j
+        elif substring in END_TURN:
+            message = {"content": cur_message_content, "role": role}
+            if name is not None:
+                message["name"] = name
+            messages.append(message)
+            if not sticky_name:
+                name = None
+            cur_message_content = ""
+        else:
+            cur_message_content += substring
+        i += 1
+    if cur_message_content != "":
+        message = {"content": cur_message_content, "role": role}
+        if name is not None:
+            message["name"] = name
+        messages.append(message)
+    return messages
+
+
 def complete_sync(*args, **kwargs):
     return asyncio.run(complete(*args, **kwargs))
 
@@ -338,6 +409,8 @@ def tokenize(model: str, string: str) -> List[int]:
         # tiktoken internally caches loaded tokenizers
         if model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
+        elif model.startswith("o1"):
+            tokenizer = tiktoken.encoding_for_model("gpt-4o")
         else:
             tokenizer = tiktoken.encoding_for_model(model)
         # encode special tokens as normal
@@ -427,6 +500,7 @@ def pick_vendor(model, custom_config=None):
         or model.startswith("ft-")
         or model.startswith("gpt-4")
         or model.startswith("gpt-3.5-")
+        or model.startswith("o1-")
     ):
         return "openai"
     elif "j1-" in model or model.startswith("j2-"):
@@ -435,7 +509,7 @@ def pick_vendor(model, custom_config=None):
         return "forefront"
     elif model.startswith("claude-"):
         return "anthropic"
-    elif '/' in model:
+    elif "/" in model:
         return "huggingface"
     else:
         raise NotImplementedError("Unknown model")
@@ -447,6 +521,8 @@ def max_token_length(model):
     """
     if model == "gpt-4-32k":
         return 32769
+    elif model.startswith("o1"):
+        return 128_000
     elif model.startswith("gpt-4"):
         return 8193
     elif model == "code-davinci-002":
