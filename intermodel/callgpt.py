@@ -435,6 +435,8 @@ def pick_vendor(model, custom_config=None):
         return "forefront"
     elif model.startswith("claude-"):
         return "anthropic"
+    elif '/' in model:
+        return "huggingface"
     else:
         raise NotImplementedError("Unknown model")
 
@@ -500,7 +502,11 @@ def max_token_length(model):
                 data = json.load(f)
             return data["max_position_embeddings"] + 1
         except Exception as e:
-            raise NotImplementedError(f"Token cap not known for model {model}")
+            raise NotImplementedError(
+                f"Unable to download {model} from HuggingFace. "
+                f"Are you logged into HuggingFace (`huggingface-cli login`) and have you agreed to the model license at"
+                f"`https://huggingface.co/{model}`?"
+            )
 
 
 class InteractiveIntermodel(cmd.Cmd):
