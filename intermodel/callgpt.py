@@ -98,6 +98,7 @@ async def complete(
         if (
             model.startswith("gpt-3.5")
             or model.startswith("gpt-4")
+            or model.startswith("o1")
             and not model.endswith("-base")
         ):
             api_arguments["messages"] = format_messages(api_arguments["prompt"], "user")
