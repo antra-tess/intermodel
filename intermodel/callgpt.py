@@ -80,7 +80,9 @@ async def complete(
             "model": model,
             "prompt": prompt,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            (
+                "max_completion_tokens" if model.startswith("o1") else "max_tokens"
+            ): max_tokens,
             "top_p": top_p,
             "frequency_penalty": frequency_penalty,
             "presence_penalty": presence_penalty,
