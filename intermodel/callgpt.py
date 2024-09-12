@@ -76,6 +76,8 @@ async def complete(
 
         rest = dict(kwargs)
         rest.pop("openai_api_key")
+        if model.startswith("o1"):
+            stop = []
         api_arguments = {
             "model": model,
             "prompt": prompt,
