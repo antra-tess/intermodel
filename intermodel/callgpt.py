@@ -422,13 +422,8 @@ def tokenize(model: str, string: str) -> List[int]:
         # XXX: make this an option
         return tokenizer.encode(string, allowed_special="all")
     elif vendor == "anthropic":
-        import anthropic
-
-        # anthropic caches the tokenizer
-        # XXX: this may send synchronous network requests, could be downloaded as part of build
-        tokenizer = anthropic.get_tokenizer()
-        encoded_text = tokenizer.encode(string)
-        return encoded_text.ids
+        # all anthropic tokenzers are private now
+        return tokenize("gpt2", string)
     elif model in untokenizable:
         return tokenize("gpt2", string)
     else:
