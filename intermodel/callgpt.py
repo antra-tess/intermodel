@@ -462,7 +462,7 @@ def parse_model_string(model: str):
         max_token_len=(
             int(match.group(3))
             if match.group(3) is not None
-            else max_token_length_inner(model)
+            else max_token_length_inner(match.group(1))
         ),
     )
 
