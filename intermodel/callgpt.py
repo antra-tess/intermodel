@@ -39,7 +39,7 @@ except AttributeError:
     stop=tenacity.stop_after_attempt(6),
 )
 async def complete(
-    raw_model,
+    model,
     prompt=None,
     temperature=None,
     top_p=None,
@@ -57,7 +57,8 @@ async def complete(
     vendor_config=None,
     **kwargs,
 ):
-    model = parse_model_string(MODEL_ALIASES.get(raw_model, raw_model)).model
+    tokenize_as = parse_model_string(MODEL_ALIASES.get(model, model)).tokenize_as
+    model = parse_model_string(MODEL_ALIASES.get(model, model)).model
     # todo: multiple completions, top k, logit bias for all vendors
     # todo: detect model not found on all vendors and throw the same exception
     if vendor is None:
@@ -315,7 +316,7 @@ async def complete(
         return {"prompt": {"text": prompt}, "completions": {}}
     elif vendor == "fake-local":
         return intermodel.callgpt_faker.fake_local(
-            model=parse_model_string(raw_model).tokenize_as,
+            model=tokenize_as,
             vendor=vendor,
             prompt=prompt,
             max_tokens=max_tokens,
