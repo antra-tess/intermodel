@@ -456,13 +456,14 @@ class Model:
 def parse_model_string(model: str):
     # returns: model, tokenization model, max token length
     match = re.match(r"^(.+?)(?:\^(.+?))?(?:@(\d+))?$", model)
+    tokenize_as = match.group(2) or match.group(1),
     return Model(
         model=match.group(1),
-        tokenize_as=match.group(2) or match.group(1),
+        tokenize_as=tokenize_as,
         max_token_len=(
             int(match.group(3))
             if match.group(3) is not None
-            else max_token_length_inner(match.group(1))
+            else max_token_length_inner(tokenize_as)
         ),
     )
 
