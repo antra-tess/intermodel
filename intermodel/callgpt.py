@@ -105,6 +105,7 @@ async def complete(
             model.startswith("gpt-3.5")
             or model.startswith("gpt-4")
             or model.startswith("o1")
+            or model.startswith("openpipe:")
             and not model.endswith("-base")
         ):
             api_arguments["messages"] = format_messages(api_arguments["prompt"], "user")
