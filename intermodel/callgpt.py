@@ -551,7 +551,9 @@ def max_token_length_inner(model):
     """
     The maximum number of tokens in the prompt and completion
     """
-    if model == "gpt-4-32k":
+    if model == "gpt2":
+        return 1024
+    elif model == "gpt-4-32k":
         return 32769
     elif model.startswith("o1"):
         return 128_000
