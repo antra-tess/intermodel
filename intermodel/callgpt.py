@@ -76,6 +76,8 @@ async def complete(
             hash_object.update(str(user_id).encode("utf-8"))
             hashed_user_id = hash_object.hexdigest()
 
+        if "openai_api_key" not in kwargs:
+            kwargs["openai_api_key"] = os.getenv("OPENAI_API_KEY")
         rest = dict(kwargs)
         rest.pop("openai_api_key")
         if model.startswith("o1"):
