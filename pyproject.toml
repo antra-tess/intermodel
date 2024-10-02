@@ -1,6 +1,6 @@
 [project]
 name = "intermodel"
-version = "0.0.57"
+version = "0.0.58"
 dependencies = [
     "openai==0.28",
     "httpx",

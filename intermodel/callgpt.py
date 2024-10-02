@@ -260,6 +260,8 @@ async def complete(
         client = anthropic.Client(
             api_key=kwargs.get("anthropic_api_key", os.getenv("ANTHROPIC_API_KEY"))
         )
+        if "anthropic_api_key" in kwargs:
+            del kwargs["anthropic_api_key"]
         response = await client.acompletion(
             model=model,
             prompt=prompt or "\n\nHuman:",
