@@ -262,13 +262,18 @@ async def complete(
         )
         if "anthropic_api_key" in kwargs:
             del kwargs["anthropic_api_key"]
+
+        # remove None values, Anthropic API doesn't like them
+        for key, value in dict(kwargs).items():
+            if value is None:
+                del kwargs[key]
         response = await client.acompletion(
             model=model,
             prompt=prompt or "\n\nHuman:",
             max_tokens_to_sample=max_tokens or 16,
             temperature=temperature or 1,
             top_p=top_p or 1,
-            top_k=top_k or -1,
+            # top_k=top_k or -1,
             stop_sequences=stop or list(),
             disable_checks=True,
             **kwargs,
