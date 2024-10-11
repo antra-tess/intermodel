@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import dataclasses
+import json
 import re
 import traceback
 import asyncio
@@ -117,32 +118,38 @@ async def complete(
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
             api_response = await openai.ChatCompletion.acreate(**api_arguments)
-            for c in api_response["choices"]:
-                c["text"] = c["message"]["content"]
+            try:
+                for c in api_response["choices"]:
+                    c["text"] = c["message"]["content"]
+            except KeyError:
+                raise ValueError("API responded with" + json.dumps(api_response))
         else:
             api_response = await openai.Completion.acreate(**api_arguments)
-        return {
-            "prompt": {"text": prompt if prompt is not None else "<|endoftext|>"},
-            "completions": [
-                {
-                    "text": completion.text,
-                    "finish_reason": {
-                        "reason": completion.get("finish_reason", "unknown")
-                    },
-                }
-                for completion in api_response.choices
-            ],
-            "model": api_response.model,
-            "id": api_response.id,
-            "created": api_response.created,
-            "usage": {
-                # "prompt_tokens": api_response.usage.prompt_tokens,
-                # # if the completion is empty, the value will be missing
-                # "completion_tokens": api_response.usage.get("completion_tokens", 0),
-                # "charged_tokens": api_response.usage.total_tokens,
-                "vendor": vendor,
-            },
-        }
+        try:
+            return {
+                "prompt": {"text": prompt if prompt is not None else "<|endoftext|>"},
+                "completions": [
+                    {
+                        "text": completion.text,
+                        "finish_reason": {
+                            "reason": completion.get("finish_reason", "unknown")
+                        },
+                    }
+                    for completion in api_response.choices
+                ],
+                "model": api_response.model,
+                "id": api_response.id,
+                "created": api_response.created,
+                "usage": {
+                    # "prompt_tokens": api_response.usage.prompt_tokens,
+                    # # if the completion is empty, the value will be missing
+                    # "completion_tokens": api_response.usage.get("completion_tokens", 0),
+                    # "charged_tokens": api_response.usage.total_tokens,
+                    "vendor": vendor,
+                },
+            }
+        except AttributeError:
+            raise ValueError("API responded with" + json.dumps(api_response))
     elif vendor == "ai21":
         import httpx
 
