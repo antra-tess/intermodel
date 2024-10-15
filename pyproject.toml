@@ -1,8 +1,7 @@
 [project]
 name = "intermodel"
-version = "0.0.60"
+version = "0.0.61"
 dependencies = [
-    "openai==0.28",
     "httpx",
     "anthropic",
     "tiktoken",
@@ -12,6 +11,7 @@ dependencies = [
     "tenacity",
     "tokenizers",
     "pytest>=8.3.3",
+    "aiohttp>=3.10.10",
 ]
 
 [tool.poetry]
@@ -22,3 +22,8 @@ readme = "README.md"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"
+
+[tool.rye]
+dev-dependencies = [
+    "pytest>=8.3.3",
+]

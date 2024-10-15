@@ -11,7 +11,7 @@ import uuid
 import hashlib
 from typing import Union, List, Optional, Iterable
 
-import openai
+import aiohttp
 import tenacity
 
 import intermodel.callgpt_faker
@@ -23,19 +23,15 @@ from intermodel.hf_token import get_hf_tokenizer, get_hf_auth_token
 load_dotenv()
 
 MODEL_ALIASES = {}
-MODEL_TO_AUTHOR = {
-    "flan-t5-xxl": "google",
-}
 untokenizable = set()
 
-try:
-    OpenAIRateLimitError = openai.error.RateLimitError
-except AttributeError:
-    OpenAIRateLimitError = openai.RateLimitError
+session: Optional[aiohttp.ClientSession] = None
 
 
 @tenacity.retry(
-    retry=tenacity.retry_if_exception_type(OpenAIRateLimitError),
+    retry=tenacity.retry_if_exception(
+        lambda e: isinstance(e, aiohttp.ClientResponseError) and e.status in (429, 500)
+    ),
     wait=tenacity.wait_random_exponential(min=1, max=60),
     stop=tenacity.stop_after_attempt(6),
 )
@@ -67,8 +63,9 @@ async def complete(
     if vendor_config is not None and vendor in vendor_config:
         kwargs = {**vendor_config[vendor]["config"], **kwargs}
     if vendor.startswith("openai"):
-        import openai
-
+        global session
+        if session is None:
+            session = aiohttp.ClientSession()
         if user_id is None:
             hashed_user_id = None
         else:
@@ -80,12 +77,17 @@ async def complete(
         if "openai_api_key" not in kwargs:
             kwargs["openai_api_key"] = os.getenv("OPENAI_API_KEY")
         rest = dict(kwargs)
-        rest.pop("openai_api_key")
+        headers = {
+            "Content-Type": "application/json",
+        }
+        if (api_key := rest.pop("openai_api_key", None)) is not None:
+            headers["Authorization"] = f"Bearer {api_key}"
+        api_base = rest.pop("api_base", "https://api.openai.com/v1")
         if model.startswith("o1"):
             stop = []
         api_arguments = {
             "model": model,
-            "prompt": prompt,
+            "prompt": "<|endoftext|>" if prompt is None else prompt,
             "temperature": temperature,
             (
                 "max_completion_tokens" if model.startswith("o1") else "max_tokens"
@@ -95,7 +97,6 @@ async def complete(
             "presence_penalty": presence_penalty,
             "stop": stop if stop != [] else None,
             "user": hashed_user_id,
-            "api_key": kwargs["openai_api_key"],
             "logit_bias": logit_bias,
             "n": num_completions,
             **rest,
@@ -110,36 +111,39 @@ async def complete(
             or model.startswith("o1")
             or model.startswith("openpipe:")
             or model.startswith("gpt4")
-            and not model.endswith("-base")
-        ):
+        ) and not model.endswith("-base"):
             api_arguments["messages"] = format_messages(api_arguments["prompt"], "user")
             if "prompt" in api_arguments:
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
-            api_response = await openai.ChatCompletion.acreate(**api_arguments)
-            try:
-                for c in api_response["choices"]:
-                    c["text"] = c["message"]["content"]
-            except KeyError:
-                raise ValueError("API responded with" + json.dumps(api_response))
+            api_suffix = "/chat/completions"
         else:
-            api_response = await openai.Completion.acreate(**api_arguments)
+            api_suffix = "/completions"
+        async with session.post(
+            api_base + api_suffix, headers=headers, json=api_arguments
+        ) as response:
+            response.raise_for_status()
+            api_response = await response.json()
         try:
             return {
                 "prompt": {"text": prompt if prompt is not None else "<|endoftext|>"},
                 "completions": [
                     {
-                        "text": completion.text,
+                        "text": (
+                            completion["text"]
+                            if api_suffix == "/completions"
+                            else completion["message"]["content"]
+                        ),
                         "finish_reason": {
                             "reason": completion.get("finish_reason", "unknown")
                         },
                     }
-                    for completion in api_response.choices
+                    for completion in api_response["choices"]
                 ],
-                "model": api_response.model,
-                "id": api_response.id,
-                "created": api_response.created,
+                "model": api_response.get("model"),
+                "id": api_response.get("id"),
+                "created": api_response.get("created"),
                 "usage": {
                     # "prompt_tokens": api_response.usage.prompt_tokens,
                     # # if the completion is empty, the value will be missing
@@ -148,7 +152,7 @@ async def complete(
                     "vendor": vendor,
                 },
             }
-        except AttributeError:
+        except KeyError:
             raise ValueError("API responded with" + json.dumps(api_response))
     elif vendor == "ai21":
         import httpx

@@ -10,10 +10,10 @@
 #   universal: false
 
 -e file:.
-aiohappyeyeballs==2.4.0
+aiohappyeyeballs==2.4.3
     # via aiohttp
-aiohttp==3.10.5
-    # via openai
+aiohttp==3.10.10
+    # via intermodel
 aiosignal==1.3.1
     # via aiohttp
 annotated-types==0.7.0
@@ -64,14 +64,14 @@ jiter==0.5.0
 multidict==6.1.0
     # via aiohttp
     # via yarl
-openai==0.28.0
-    # via intermodel
 packaging==24.1
     # via huggingface-hub
     # via pytest
     # via replicate
 pluggy==1.5.0
     # via pytest
+propcache==0.2.0
+    # via yarl
 pydantic==2.9.1
     # via anthropic
     # via replicate
@@ -89,7 +89,6 @@ replicate==0.32.1
     # via intermodel
 requests==2.32.3
     # via huggingface-hub
-    # via openai
     # via tiktoken
 sniffio==1.3.1
     # via anthropic
@@ -104,7 +103,6 @@ tokenizers==0.20.0
     # via intermodel
 tqdm==4.66.5
     # via huggingface-hub
-    # via openai
 typing-extensions==4.12.2
     # via anthropic
     # via huggingface-hub
@@ -113,5 +111,5 @@ typing-extensions==4.12.2
     # via replicate
 urllib3==2.2.3
     # via requests
-yarl==1.11.1
+yarl==1.15.2
     # via aiohttp
