@@ -30,7 +30,7 @@ session: Optional[aiohttp.ClientSession] = None
 
 @tenacity.retry(
     retry=tenacity.retry_if_exception(
-        lambda e: isinstance(e, aiohttp.ClientResponseError) and e.status in (429, 500)
+        lambda e: isinstance(e, aiohttp.ClientResponseError) and e.status in (429,)
     ),
     wait=tenacity.wait_random_exponential(min=1, max=60),
     stop=tenacity.stop_after_attempt(6),
