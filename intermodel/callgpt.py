@@ -533,7 +533,7 @@ def pick_vendor(model, custom_config=None):
         for vendor_name, vendor in custom_config.items():
             if vendor["provides"] is not None:
                 for pattern in vendor["provides"]:
-                    if re.match(pattern, model):
+                    if re.fullmatch(pattern, model):
                         return vendor_name
     model = MODEL_ALIASES.get(model, model)
     if (
