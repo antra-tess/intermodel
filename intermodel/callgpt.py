@@ -13,6 +13,7 @@ from typing import Union, List, Optional, Iterable
 
 import aiohttp
 import tenacity
+from huggingface_hub.utils import LocalEntryNotFoundError
 
 import intermodel.callgpt_faker
 
@@ -621,9 +622,21 @@ def max_token_length_inner(model):
         try:
             import huggingface_hub
 
-            fname = huggingface_hub.hf_hub_download(
-                model, "config.json", token=get_hf_auth_token()
-            )
+            try:
+                fname = huggingface_hub.hf_hub_download(
+                    model,
+                    "config.json",
+                    token=get_hf_auth_token(),
+                    local_files_only=True,
+                )
+            except LocalEntryNotFoundError:
+                fname = huggingface_hub.hf_hub_download(
+                    model,
+                    "config.json",
+                    token=get_hf_auth_token(),
+                    local_files_only=False,
+                )
+
             with open(fname, "r") as f:
                 import json
 
