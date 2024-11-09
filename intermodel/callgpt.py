@@ -154,7 +154,9 @@ async def complete(
                 },
             }
         except KeyError:
-            raise ValueError("API responded with" + json.dumps(api_response))
+            if 'created' in api_response:
+                del api_response['created']
+            raise ValueError("API responded with: " + json.dumps(api_response))
     elif vendor == "ai21":
         import httpx
 
