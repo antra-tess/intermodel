@@ -2,6 +2,8 @@
 import dataclasses
 import json
 import re
+import sys
+import warnings
 import traceback
 import asyncio
 import cmd
@@ -154,8 +156,10 @@ async def complete(
                 },
             }
         except KeyError:
-            if 'error' in api_response:
-                raise ValueError("API returned error: " + json.dumps(api_response['error']))
+            if "error" in api_response:
+                raise ValueError(
+                    "API returned error: " + json.dumps(api_response["error"])
+                )
             else:
                 raise ValueError("API responded with: " + json.dumps(api_response))
     elif vendor == "ai21":
@@ -458,15 +462,22 @@ def tokenize(model: str, string: str) -> List[int]:
         try:
             tokenizer = get_hf_tokenizer(model)
         except Exception as e:
+            message = (
+                f"Failed to download tokenizer by looking up {model} as a huggingface model ID."
+                "To override the tokenizer, put the correct huggingface ID ^ after the model name and follow it with a max token cap."
+                "For example, to use OpenRouter Gemini while using the Gemma tokenizer with a maximum context window of 2 million Gemma tokens, use `google/gemini-pro-1.5^google/gemma-7b@2000000`"
+                "Using the incorrect tokenizer may lead to flakiness and intermittent failures. Some proprietary models have openly available tokenizers."
+            )
             if e.__class__.__name__ == "GatedRepoError":
-                raise ValueError(f"Log in with huggingface-cli to access {model}")
+                warnings.warn(
+                    message
+                    + f" Cause: GatedRepoError. Log in with huggingface-cli and accept the model ToS at https://huggingface.co/{model} to access the model tokenizer"
+                )
             elif e.__class__.__name__ == "RepositoryNotFoundError":
-                raise NotImplementedError(f"I don't know how to tokenize {model}")
+                warnings.warn(message + f" Cause: Not found on huggingface")
             else:
-                print(e)
-                print("Warning, tokenizer failure, encoding as gpt2")
-                untokenizable.add(model)
-                return tokenize("gpt2", string)
+                warnings.warn(message)
+            return tokenize("gpt2", string)
         else:
             return tokenizer.encode(string).ids
 
