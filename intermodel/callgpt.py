@@ -92,9 +92,6 @@ async def complete(
             "model": model,
             "prompt": "<|endoftext|>" if prompt is None else prompt,
             "temperature": temperature,
-            (
-                "max_completion_tokens" if model.startswith("o1") else "max_tokens"
-            ): max_tokens,
             "top_p": top_p,
             "frequency_penalty": frequency_penalty,
             "presence_penalty": presence_penalty,
@@ -104,6 +101,8 @@ async def complete(
             "n": num_completions,
             **rest,
         }
+        if not model.startswith("o1"):
+            api_arguments["max_tokens"] = max_tokens
         # remove None values, OpenAI API doesn't like them
         for key, value in dict(api_arguments).items():
             if value is None:
@@ -121,6 +120,12 @@ async def complete(
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
             api_suffix = "/chat/completions"
+        if ( 
+            model.startswith("o1")
+            or model.startswith("deepseek")
+        ):
+            if "logit_bias" in api_arguments:
+                del api_arguments["logit_bias"]
         else:
             api_suffix = "/completions"
         async with session.post(
@@ -276,7 +281,7 @@ async def complete(
 
         if num_completions not in [None, 1]:
             raise NotImplementedError("Anthropic only supports num_completions=1")
-        client = anthropic.Client(
+        client = anthropic.Anthropic(
             api_key=kwargs.get("anthropic_api_key", os.getenv("ANTHROPIC_API_KEY"))
         )
         if "anthropic_api_key" in kwargs:
@@ -286,20 +291,19 @@ async def complete(
         for key, value in dict(kwargs).items():
             if value is None:
                 del kwargs[key]
-        response = await client.acompletion(
+
+        response = client.messages.create(
             model=model,
-            prompt=prompt or "\n\nHuman:",
-            max_tokens_to_sample=max_tokens or 16,
+            messages=[{"role": "assistant", "content": prompt}],
+            max_tokens=max_tokens or 16,
             temperature=temperature or 1,
             top_p=top_p or 1,
-            # top_k=top_k or -1,
             stop_sequences=stop or list(),
-            disable_checks=True,
             **kwargs,
         )
-        if response["stop_reason"] == "stop_sequence":
+        if response.stop_reason == "stop_sequence":
             finish_reason = "stop"
-        elif response["stop_reason"] == "max_tokens":
+        elif response.stop_reason == "max_tokens":
             finish_reason = "length"
         else:
             finish_reason = "unknown"
@@ -308,7 +312,7 @@ async def complete(
                 "text": prompt,
             },
             "completions": [
-                {"text": response["completion"], "finish_reason": finish_reason}
+                {"text": response.content[0].text, "finish_reason": finish_reason}
             ],
             "model": model,
             "id": uuid.uuid4(),
