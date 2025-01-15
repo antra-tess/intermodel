@@ -120,10 +120,7 @@ async def complete(
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
             api_suffix = "/chat/completions"
-        if ( 
-            model.startswith("o1")
-            or model.startswith("deepseek")
-        ):
+        if model.startswith("o1") or model.startswith("deepseek"):
             if "logit_bias" in api_arguments:
                 del api_arguments["logit_bias"]
         else:
@@ -292,9 +289,11 @@ async def complete(
             if value is None:
                 del kwargs[key]
 
+        messages = process_image_messages(prompt)
+
         response = client.messages.create(
             model=model,
-            messages=[{"role": "assistant", "content": prompt}],
+            messages=messages,
             max_tokens=max_tokens or 16,
             temperature=temperature or 1,
             top_p=top_p or 1,
@@ -358,6 +357,84 @@ async def complete(
         )
     else:
         raise NotImplementedError(f"Unknown vendor {vendor}")
+
+
+def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
+    """Convert a prompt containing image URLs into a messages array.
+
+    Args:
+        prompt (str): The input prompt text with image URL markers
+        prompt_role (str): The role to use for text messages (default: "user")
+
+    Returns:
+        list: Array of message objects with text and images
+    """
+    import base64
+    import requests
+    from mimetypes import guess_type
+
+    messages = []
+    sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
+
+    # Constants
+    MAX_IMAGES = 10
+    total_images = (len(sections) - 1) // 2
+    images_to_process = min(total_images, MAX_IMAGES)
+    image_counter = 0
+
+    def download_and_encode_image(url):
+        """Download image and convert to base64."""
+        response = requests.get(url)
+        response.raise_for_status()
+        image_data = response.content
+        mime_type = (
+            response.headers.get("content-type")
+            or guess_type(url)[0]
+            or "application/octet-stream"
+        )
+        return base64.b64encode(image_data).decode(), mime_type
+
+    # Process each section
+    for i, section in enumerate(sections):
+        if i % 2 == 0:  # Text section
+            if section.strip():
+                messages.append({"role": prompt_role, "content": section})
+        else:  # Image URL section
+            image_counter += 1
+            if total_images - image_counter < images_to_process:
+                try:
+                    base64_data, mime_type = download_and_encode_image(section)
+                    image_content = {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime_type,
+                            "data": base64_data,
+                        },
+                    }
+
+                    # Add to last message if it exists, otherwise create new
+                    if messages and messages[-1]["role"] == "user":
+                        if isinstance(messages[-1]["content"], list):
+                            messages[-1]["content"].append(image_content)
+                        else:
+                            messages[-1]["content"] = [
+                                {"type": "text", "text": messages[-1]["content"]},
+                                image_content,
+                            ]
+                    else:
+                        messages.append({"role": "user", "content": [image_content]})
+                except requests.RequestException:
+                    continue  # Skip failed image downloads
+            else:
+                # Keep URL markers for images beyond processing limit
+                url_text = f"<|begin_of_img_url|>{section}<|end_of_img_url|>"
+                if messages and messages[-1]["role"] == prompt_role:
+                    messages[-1]["content"] += url_text
+                else:
+                    messages.append({"role": prompt_role, "content": url_text})
+
+    return messages
 
 
 SWITCH_ROLE_START = ["<|start_header_id|>", "<|im_start|>"]
