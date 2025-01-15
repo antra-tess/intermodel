@@ -55,6 +55,8 @@ async def complete(
     logit_bias=None,
     vendor=None,
     vendor_config=None,
+    name=None,
+    message_history_format=None,
     **kwargs,
 ):
     tokenize_as = parse_model_string(MODEL_ALIASES.get(model, model)).tokenize_as
@@ -273,7 +275,7 @@ async def complete(
             # forefront bills both the prompt and completion
             "usage": NotImplemented,
         }
-    elif vendor == "anthropic":
+    elif vendor.startswith("anthropic"):
         import anthropic
 
         if num_completions not in [None, 1]:
@@ -289,7 +291,45 @@ async def complete(
             if value is None:
                 del kwargs[key]
 
-        messages = process_image_messages(prompt)
+        messages = []
+        system = kwargs.get("system", None)
+        stop = stop or list()
+        stop_sequences = []
+
+        if message_history_format is not None and message_history_format.name == "chat":
+            if system is None:
+                if message_history_format.assistant_name is not None:
+                    system = f"You are interacting in Discord as {message_history_format.assistant_name}."
+                else:
+                    system = "You are interacting in Discord."
+            messages = format_messages(prompt, "user")
+            messages = format_anthropic_messages(
+                messages, message_history_format.assistant_name
+            )
+            for stop_sequence in stop:
+                parts = split_many(stop_sequence, (SET_NAME_START + SET_NAME_END))
+                if len(parts) > 2:
+                    stop_sequences.append(f"{parts[2]}:")
+                else:
+                    stop_sequences.append(stop_sequence)
+        else:
+            stop_sequences = stop
+            if system is None:
+                if name is not None:
+                    system = f"You are interacting in Discord as {name}."
+                else:
+                    system = "The assistant is in CLI simulation mode, and responds to the user's CLI commands only with the output of the command."
+                    messages = [
+                        {"role": "user", "content": "<cmd>cat untitled.txt</cmd>"}
+                    ]
+
+            messages = messages + process_image_messages(prompt)
+
+        if vendor == "anthropic-steering-preview":
+            kwargs["extra_headers"] = {"anthropic-beta": "steering-2024-06-04"}
+            if "steering" in kwargs:
+                kwargs["extra_body"] = {"steering": kwargs["steering"]}
+                del kwargs["steering"]
 
         response = client.messages.create(
             model=model,
@@ -297,7 +337,8 @@ async def complete(
             max_tokens=max_tokens or 16,
             temperature=temperature or 1,
             top_p=top_p or 1,
-            stop_sequences=stop or list(),
+            stop_sequences=stop_sequences,
+            system=system,
             **kwargs,
         )
         if response.stop_reason == "stop_sequence":
@@ -359,6 +400,53 @@ async def complete(
         raise NotImplementedError(f"Unknown vendor {vendor}")
 
 
+def download_and_encode_image(url):
+    """Download image and convert to base64."""
+
+    import base64
+    import requests
+    from mimetypes import guess_type
+
+    response = requests.get(url)
+    response.raise_for_status()
+    image_data = response.content
+    mime_type = (
+        response.headers.get("content-type")
+        or guess_type(url)[0]
+        or "application/octet-stream"
+    )
+    return base64.b64encode(image_data).decode(), mime_type
+
+
+def process_image_message(content_string):
+    import requests
+
+    sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", content_string)
+    if len(sections) == 1:
+        return content_string
+    content = []
+    for i, section in enumerate(sections):
+        if i % 2 == 0:
+            if section.strip():
+                content.append({"type": "text", "text": section})
+        else:
+            try:
+                base64_data, mime_type = download_and_encode_image(section)
+                content.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime_type,
+                            "data": base64_data,
+                        },
+                    }
+                )
+            except requests.RequestException:
+                continue
+    return content
+
+
 def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
     """Convert a prompt containing image URLs into a messages array.
 
@@ -369,9 +457,7 @@ def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
     Returns:
         list: Array of message objects with text and images
     """
-    import base64
     import requests
-    from mimetypes import guess_type
 
     messages = []
     sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
@@ -381,18 +467,6 @@ def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
     total_images = (len(sections) - 1) // 2
     images_to_process = min(total_images, MAX_IMAGES)
     image_counter = 0
-
-    def download_and_encode_image(url):
-        """Download image and convert to base64."""
-        response = requests.get(url)
-        response.raise_for_status()
-        image_data = response.content
-        mime_type = (
-            response.headers.get("content-type")
-            or guess_type(url)[0]
-            or "application/octet-stream"
-        )
-        return base64.b64encode(image_data).decode(), mime_type
 
     # Process each section
     for i, section in enumerate(sections):
@@ -457,7 +531,10 @@ def split_many(string: str, delimiters: Iterable[str]) -> List[str]:
 
 
 def format_messages(
-    string: str, initial_role, initial_name=None, sticky_name=True
+    string: str,
+    initial_role,
+    initial_name=None,
+    sticky_name=True,
 ) -> list:
     role = initial_role
     name = initial_name
@@ -508,6 +585,22 @@ def format_messages(
             message["name"] = name
         messages.append(message)
     return messages
+
+
+def format_anthropic_messages(
+    messages: list,
+    assistant_name: str,
+) -> list:
+    new_messages = []
+    for message in messages:
+        content = message["content"]
+        if message.get("name", None) is not None:
+            content = f"{message['name']}: {content}"
+        new_messages.append(
+            {"role": message["role"], "content": process_image_message(content)}
+        )
+    new_messages.append({"role": "assistant", "content": f"{assistant_name}:"})
+    return new_messages
 
 
 def complete_sync(*args, **kwargs):
