@@ -55,10 +55,11 @@ async def complete(
     logit_bias=None,
     vendor=None,
     vendor_config=None,
-    name=None,
-    message_history_format=None,
     **kwargs,
 ):
+    message_history_format = kwargs.get("message_history_format", None)
+    messages = kwargs.get("messages", None)
+    kwargs = kwargs.get("continuation_options", {})
     tokenize_as = parse_model_string(MODEL_ALIASES.get(model, model)).tokenize_as
     model = parse_model_string(MODEL_ALIASES.get(model, model)).model
     # todo: multiple completions, top k, logit bias for all vendors
@@ -116,7 +117,20 @@ async def complete(
             or model.startswith("openpipe:")
             or model.startswith("gpt4")
         ) and not model.endswith("-base"):
-            api_arguments["messages"] = format_messages(api_arguments["prompt"], "user")
+            if messages is None:
+                if (
+                    message_history_format is not None
+                    and message_history_format.name == "chat"
+                ):
+                    api_arguments["messages"] = message_history_format.format_messages(
+                        api_arguments["prompt"], "user"
+                    )
+                else:
+                    api_arguments["messages"] = [
+                        {"role": "user", "content": api_arguments["prompt"]}
+                    ]
+            else:
+                api_arguments["messages"] = messages
             if "prompt" in api_arguments:
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
@@ -291,39 +305,31 @@ async def complete(
             if value is None:
                 del kwargs[key]
 
-        messages = []
-        system = kwargs.get("system", None)
-        stop = stop or list()
-        stop_sequences = []
-
-        if message_history_format is not None and message_history_format.name == "chat":
-            if system is None:
-                if message_history_format.assistant_name is not None:
-                    system = f"You are interacting in Discord as {message_history_format.assistant_name}."
-                else:
-                    system = "You are interacting in Discord."
-            messages = format_messages(prompt, "user")
-            messages = format_anthropic_messages(
-                messages, message_history_format.assistant_name
-            )
-            for stop_sequence in stop:
-                parts = split_many(stop_sequence, (SET_NAME_START + SET_NAME_END))
-                if len(parts) > 2:
-                    stop_sequences.append(f"{parts[2]}:")
-                else:
-                    stop_sequences.append(stop_sequence)
-        else:
-            stop_sequences = stop
-            if system is None:
-                if name is not None:
-                    system = f"You are interacting in Discord as {name}."
-                else:
-                    system = "The assistant is in CLI simulation mode, and responds to the user's CLI commands only with the output of the command."
+        if messages is None:
+            if (
+                message_history_format is not None
+                and message_history_format.name == "chat"
+            ):
+                messages = [
+                    {
+                        "role": message["role"],
+                        "content": process_image_message(message["content"]),
+                    }
+                    for message in message_history_format.format_messages(
+                        prompt, "user"
+                    )
+                ]
+            else:
+                if kwargs.get("system", None) is None:
+                    kwargs["system"] = (
+                        "The assistant is in CLI simulation mode, and responds to the user's CLI commands only with the output of the command."
+                    )
                     messages = [
                         {"role": "user", "content": "<cmd>cat untitled.txt</cmd>"}
                     ]
-
-            messages = messages + process_image_messages(prompt)
+                else:
+                    messages = []
+                messages = messages + process_image_messages(prompt)
 
         if vendor == "anthropic-steering-preview":
             kwargs["extra_headers"] = {"anthropic-beta": "steering-2024-06-04"}
@@ -337,8 +343,7 @@ async def complete(
             max_tokens=max_tokens or 16,
             temperature=temperature or 1,
             top_p=top_p or 1,
-            stop_sequences=stop_sequences,
-            system=system,
+            stop_sequences=stop or list(),
             **kwargs,
         )
         if response.stop_reason == "stop_sequence":
@@ -509,98 +514,6 @@ def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
                     messages.append({"role": prompt_role, "content": url_text})
 
     return messages
-
-
-SWITCH_ROLE_START = ["<|start_header_id|>", "<|im_start|>"]
-SWITCH_ROLE_END = ["<|end_header_id|>", "<|im_sep|>"]
-END_TURN = ["<|eot_id|>", "<|im_end|>"]
-SET_NAME_START = ["<|name_start|>"]
-SET_NAME_END = ["<|name_end|>"]
-ALL_DELIMITERS = (
-    SWITCH_ROLE_START + SWITCH_ROLE_END + END_TURN + SET_NAME_START + SET_NAME_END
-)
-
-
-def split_many(string: str, delimiters: Iterable[str]) -> List[str]:
-    # Escape special regex characters and join delimiters with '|'
-    pattern = "(" + "|".join(re.escape(d) for d in delimiters) + ")"
-    # Split the string
-    result = re.split(pattern, string)
-    # Remove empty strings from the result
-    return [part.strip() for part in result if part.strip()]
-
-
-def format_messages(
-    string: str,
-    initial_role,
-    initial_name=None,
-    sticky_name=True,
-) -> list:
-    role = initial_role
-    name = initial_name
-    substrings = split_many(string, ALL_DELIMITERS)
-    i = 0
-    messages = []
-    cur_message_content = ""
-    while i < len(substrings):
-        substring = substrings[i]
-        if substring in SWITCH_ROLE_START:
-            sofar = ""
-            j = i + 1
-            while j < len(substrings):
-                search = substrings[j]
-                if search in SWITCH_ROLE_END:
-                    role = sofar
-                    break
-                else:
-                    sofar += substrings[j]
-                j += 1
-            i = j
-        elif substring in SET_NAME_START:
-            sofar = ""
-            j = i + 1
-            while j < len(substrings):
-                search = substrings[j]
-                if search in SET_NAME_END:
-                    name = sofar
-                    break
-                else:
-                    sofar += substrings[j]
-                j += 1
-            i = j
-        elif substring in END_TURN:
-            message = {"content": cur_message_content, "role": role}
-            if name is not None:
-                message["name"] = name
-            messages.append(message)
-            if not sticky_name:
-                name = None
-            cur_message_content = ""
-        else:
-            cur_message_content += substring
-        i += 1
-    if cur_message_content != "":
-        message = {"content": cur_message_content, "role": role}
-        if name is not None:
-            message["name"] = name
-        messages.append(message)
-    return messages
-
-
-def format_anthropic_messages(
-    messages: list,
-    assistant_name: str,
-) -> list:
-    new_messages = []
-    for message in messages:
-        content = message["content"]
-        if message.get("name", None) is not None:
-            content = f"{message['name']}: {content}"
-        new_messages.append(
-            {"role": message["role"], "content": process_image_message(content)}
-        )
-    new_messages.append({"role": "assistant", "content": f"{assistant_name}:"})
-    return new_messages
 
 
 def complete_sync(*args, **kwargs):
