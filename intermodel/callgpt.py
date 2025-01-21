@@ -294,7 +294,7 @@ async def complete(
 
         if num_completions not in [None, 1]:
             raise NotImplementedError("Anthropic only supports num_completions=1")
-        client = anthropic.Anthropic(
+        client = anthropic.AsyncAnthropic(
             api_key=kwargs.get("anthropic_api_key", os.getenv("ANTHROPIC_API_KEY"))
         )
         if "anthropic_api_key" in kwargs:
@@ -337,7 +337,7 @@ async def complete(
                 kwargs["extra_body"] = {"steering": kwargs["steering"]}
                 del kwargs["steering"]
 
-        response = client.messages.create(
+        response = await client.messages.create(
             model=model,
             messages=messages,
             max_tokens=max_tokens or 16,
