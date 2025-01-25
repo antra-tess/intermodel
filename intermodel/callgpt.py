@@ -59,9 +59,11 @@ async def complete(
 ):
     message_history_format = kwargs.get("message_history_format", None)
     messages = kwargs.get("messages", None)
+    name = kwargs.get("name", None)
     kwargs = kwargs.get("continuation_options", {})
     tokenize_as = parse_model_string(MODEL_ALIASES.get(model, model)).tokenize_as
     model = parse_model_string(MODEL_ALIASES.get(model, model)).model
+    api_suffix = "/completions"
     # todo: multiple completions, top k, logit bias for all vendors
     # todo: detect model not found on all vendors and throw the same exception
     if vendor is None:
@@ -111,11 +113,13 @@ async def complete(
             if value is None:
                 del api_arguments[key]
         if (
-            model.startswith("gpt-3.5")
+            message_history_format is not None and message_history_format.name == "chat"
+            or model.startswith("gpt-3.5")
             or model.startswith("gpt-4")
             or model.startswith("o1")
             or model.startswith("openpipe:")
             or model.startswith("gpt4")
+            or model.startswith("deepseek-reasoner")
         ) and not model.endswith("-base"):
             if messages is None:
                 if (
@@ -127,6 +131,7 @@ async def complete(
                     )
                 else:
                     api_arguments["messages"] = [
+                        {"role": "system", "content": f"Respond to the chat, where your username is shown as {name}. Only respond with the content of your message, without including your username."},
                         {"role": "user", "content": api_arguments["prompt"]}
                     ]
             else:
@@ -136,11 +141,13 @@ async def complete(
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
             api_suffix = "/chat/completions"
+        else:
+            api_suffix = "/completions"
         if model.startswith("o1") or model.startswith("deepseek"):
             if "logit_bias" in api_arguments:
                 del api_arguments["logit_bias"]
-        else:
-            api_suffix = "/completions"
+        # print(api_arguments)
+        # exit(0)
         async with session.post(
             api_base + api_suffix, headers=headers, json=api_arguments
         ) as response:
@@ -159,6 +166,11 @@ async def complete(
                         "finish_reason": {
                             "reason": completion.get("finish_reason", "unknown")
                         },
+                        "reasoning_content": (
+                            completion["message"]["reasoning_content"]
+                            if api_suffix == "/chat/completions" and "reasoning_content" in completion["message"]
+                            else None
+                        )
                     }
                     for completion in api_response["choices"]
                 ],
