@@ -23,6 +23,8 @@ from dotenv import load_dotenv
 
 from intermodel.hf_token import get_hf_tokenizer, get_hf_auth_token
 
+import pprint
+
 load_dotenv()
 
 MODEL_ALIASES = {}
@@ -113,13 +115,15 @@ async def complete(
             if value is None:
                 del api_arguments[key]
         if (
-            message_history_format is not None and message_history_format.name == "chat"
+            message_history_format is not None
+            and message_history_format.name == "chat"
             or model.startswith("gpt-3.5")
             or model.startswith("gpt-4")
             or model.startswith("o1")
             or model.startswith("openpipe:")
             or model.startswith("gpt4")
             or model.startswith("deepseek-reasoner")
+            or model.startswith("deepseek/deepseek-r1")
         ) and not model.endswith("-base"):
             if messages is None:
                 if (
@@ -131,8 +135,11 @@ async def complete(
                     )
                 else:
                     api_arguments["messages"] = [
-                        {"role": "system", "content": f"Respond to the chat, where your username is shown as {name}. Only respond with the content of your message, without including your username."},
-                        {"role": "user", "content": api_arguments["prompt"]}
+                        {
+                            "role": "system",
+                            "content": f"Respond to the chat, where your username is shown as {name}. Only respond with the content of your message, without including your username.",
+                        },
+                        {"role": "user", "content": api_arguments["prompt"]},
                     ]
             else:
                 api_arguments["messages"] = messages
@@ -146,13 +153,27 @@ async def complete(
         if model.startswith("o1") or model.startswith("deepseek"):
             if "logit_bias" in api_arguments:
                 del api_arguments["logit_bias"]
-        # print(api_arguments)
+        if model.startswith("deepseek/deepseek-r1"):
+            del api_arguments["stop"]
+        # print('api_endpoint:', api_base + api_suffix)
+        # print('api_headers:')
+        # pprint.pprint(headers)
+        # print('api_arguments:')
+        # pprint.pprint(api_arguments)
         # exit(0)
         async with session.post(
             api_base + api_suffix, headers=headers, json=api_arguments
         ) as response:
             response.raise_for_status()
             api_response = await response.json()
+        # print('api_response:')
+        # pprint.pprint(api_response)
+        reasoning_content_key = (
+            "reasoning_content"
+            if api_base.startswith("https://api.deepseek.com")
+            else "reasoning"
+        )
+
         try:
             return {
                 "prompt": {"text": prompt if prompt is not None else "<|endoftext|>"},
@@ -167,10 +188,11 @@ async def complete(
                             "reason": completion.get("finish_reason", "unknown")
                         },
                         "reasoning_content": (
-                            completion["message"]["reasoning_content"]
-                            if api_suffix == "/chat/completions" and "reasoning_content" in completion["message"]
+                            completion["message"][reasoning_content_key]
+                            if api_suffix == "/chat/completions"
+                            and reasoning_content_key in completion["message"]
                             else None
-                        )
+                        ),
                     }
                     for completion in api_response["choices"]
                 ],
