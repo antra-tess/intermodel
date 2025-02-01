@@ -23,8 +23,6 @@ from dotenv import load_dotenv
 
 from intermodel.hf_token import get_hf_tokenizer, get_hf_auth_token
 
-import pprint
-
 load_dotenv()
 
 MODEL_ALIASES = {}
@@ -65,7 +63,6 @@ async def complete(
     kwargs = kwargs.get("continuation_options", {})
     tokenize_as = parse_model_string(MODEL_ALIASES.get(model, model)).tokenize_as
     model = parse_model_string(MODEL_ALIASES.get(model, model)).model
-    api_suffix = "/completions"
     # todo: multiple completions, top k, logit bias for all vendors
     # todo: detect model not found on all vendors and throw the same exception
     if vendor is None:
@@ -83,6 +80,8 @@ async def complete(
             hash_object.update(os.getenv("INTERMODEL_HASH_SALT", "").encode("utf-8"))
             hash_object.update(str(user_id).encode("utf-8"))
             hashed_user_id = hash_object.hexdigest()
+
+        reasoning_content_key = None
 
         if "openai_api_key" not in kwargs:
             kwargs["openai_api_key"] = os.getenv("OPENAI_API_KEY")
@@ -147,32 +146,28 @@ async def complete(
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
+            if model.startswith("o1") or model.startswith("deepseek"):
+                if "logit_bias" in api_arguments:
+                    del api_arguments["logit_bias"]
+                if (
+                    model.startswith("o1")
+                    or model.startswith("deepseek-reasoner")
+                    or model.startswith("deepseek/deepseek-r1")
+                ):
+                    if api_base.startswith("https://openrouter.ai"):
+                        reasoning_content_key = "reasoning"
+                        api_arguments["include_reasoning"] = True
+                    else:
+                        reasoning_content_key = "reasoning_content"
             api_suffix = "/chat/completions"
         else:
             api_suffix = "/completions"
-        if model.startswith("o1") or model.startswith("deepseek"):
-            if "logit_bias" in api_arguments:
-                del api_arguments["logit_bias"]
-        if model.startswith("deepseek/deepseek-r1"):
-            del api_arguments["stop"]
-        # print('api_endpoint:', api_base + api_suffix)
-        # print('api_headers:')
-        # pprint.pprint(headers)
-        # print('api_arguments:')
-        # pprint.pprint(api_arguments)
-        # exit(0)
+
         async with session.post(
             api_base + api_suffix, headers=headers, json=api_arguments
         ) as response:
             response.raise_for_status()
             api_response = await response.json()
-        # print('api_response:')
-        # pprint.pprint(api_response)
-        reasoning_content_key = (
-            "reasoning_content"
-            if api_base.startswith("https://api.deepseek.com")
-            else "reasoning"
-        )
 
         try:
             return {
@@ -188,9 +183,8 @@ async def complete(
                             "reason": completion.get("finish_reason", "unknown")
                         },
                         "reasoning_content": (
-                            completion["message"][reasoning_content_key]
-                            if api_suffix == "/chat/completions"
-                            and reasoning_content_key in completion["message"]
+                            completion["message"].get(reasoning_content_key, None)
+                            if reasoning_content_key is not None
                             else None
                         ),
                     }
