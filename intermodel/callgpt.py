@@ -570,6 +570,7 @@ def tokenize(model: str, string: str) -> List[int]:
         elif model.startswith("chatgpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         else:
+            print(f"Tokenizer not found for {model}, looking up from tiktoken, vendor: {vendor}")
             tokenizer = tiktoken.encoding_for_model(model)
         # encode special tokens as normal
         # XXX: make this an option
