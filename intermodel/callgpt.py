@@ -726,6 +726,8 @@ def max_token_length_inner(model):
         return 128_000
     elif model.startswith("gpt-4"):
         return 8193
+    elif model.startswith("chatgpt-4"):
+        return 8193
     elif model == "code-davinci-002":
         return 8001
     elif model.startswith("code"):
