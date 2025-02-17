@@ -124,6 +124,7 @@ async def complete(
             or model.startswith("openpipe:")
             or model.startswith("gpt4")
             or model.startswith("chatgpt-4o")
+            or model.startswith("grok")
             or model.startswith("deepseek-reasoner")
             or model.startswith("deepseek/deepseek-r1")
         ) and not model.endswith("-base"):
@@ -157,6 +158,7 @@ async def complete(
                     or model.startswith("chatgpt-4o")
                     or model.startswith("deepseek-reasoner")
                     or model.startswith("deepseek/deepseek-r1")
+                    or model.startswith("grok")
                 ):
                     if api_base.startswith("https://openrouter.ai"):
                         reasoning_content_key = "reasoning"
@@ -562,7 +564,7 @@ def tokenize(model: str, string: str) -> List[int]:
     except NotImplementedError:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
-    if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith("chatgpt-4o"):
+    if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith("chatgpt-4o") or model.startswith("grok"):
         # tiktoken internally caches loaded tokenizers
         if model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
@@ -570,6 +572,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("chatgpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
+        elif model.startswith("grok"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")
         else:
             tokenizer = tiktoken.encoding_for_model(model)
         # encode special tokens as normal
@@ -724,6 +728,8 @@ def max_token_length_inner(model):
     elif model.startswith("gpt-4"):
         return 8193
     elif model.startswith("chatgpt-4o"):
+        return 128_000
+    elif model.startswith("grok"):
         return 128_000
     elif model == "code-davinci-002":
         return 8001
