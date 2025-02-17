@@ -567,6 +567,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("o1"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
+        elif model.startswith("chatgpt"):
+            tokenizer = tiktoken.encoding_for_model("gpt-4o")
         else:
             tokenizer = tiktoken.encoding_for_model(model)
         # encode special tokens as normal
