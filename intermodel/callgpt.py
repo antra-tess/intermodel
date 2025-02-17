@@ -69,7 +69,6 @@ async def complete(
     # todo: detect model not found on all vendors and throw the same exception
     if vendor is None:
         vendor = pick_vendor(model, vendor_config)
-    print(f"Intermodel Vendor: {vendor}")
     if vendor_config is not None and vendor in vendor_config:
         kwargs = {**vendor_config[vendor]["config"], **kwargs}
     if vendor.startswith("openai"):
@@ -572,7 +571,6 @@ def tokenize(model: str, string: str) -> List[int]:
         elif model.startswith("chatgpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         else:
-            print(f"Tokenizer not found for {model}, looking up from tiktoken, vendor: {vendor}")
             tokenizer = tiktoken.encoding_for_model(model)
         # encode special tokens as normal
         # XXX: make this an option
