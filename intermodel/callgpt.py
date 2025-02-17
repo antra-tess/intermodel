@@ -205,6 +205,7 @@ async def complete(
                 },
             }
         except KeyError:
+            print(f"API Response: {api_response}")
             if "error" in api_response:
                 raise ValueError(
                     "API returned error: " + json.dumps(api_response["error"])
@@ -664,17 +665,21 @@ def untokenize(model: str, token_ids: List[int]) -> str:
 def pick_vendor(model, custom_config=None):
     if custom_config is not None:
         # Try exact matches first
+        print("Looking for exact matches", model)
         for vendor_name, vendor in custom_config.items():
             if vendor["provides"] is not None:
                 for pattern in vendor["provides"]:
                     if pattern == model:  # Exact match first
+                        print("Exact match found", vendor_name)
                         return vendor_name
         
         # Fall back to regex pattern matches
+        print("Looking for regex matches", model)
         for vendor_name, vendor in custom_config.items():
             if vendor["provides"] is not None:
                 for pattern in vendor["provides"]:
                     if re.fullmatch(pattern, model):
+                        print("Regex match found", vendor_name)
                         return vendor_name
 
     model = MODEL_ALIASES.get(model, model)
