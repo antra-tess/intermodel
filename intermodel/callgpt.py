@@ -662,11 +662,20 @@ def untokenize(model: str, token_ids: List[int]) -> str:
 
 def pick_vendor(model, custom_config=None):
     if custom_config is not None:
+        # Try exact matches first
+        for vendor_name, vendor in custom_config.items():
+            if vendor["provides"] is not None:
+                for pattern in vendor["provides"]:
+                    if pattern == model:  # Exact match first
+                        return vendor_name
+        
+        # Fall back to regex pattern matches
         for vendor_name, vendor in custom_config.items():
             if vendor["provides"] is not None:
                 for pattern in vendor["provides"]:
                     if re.fullmatch(pattern, model):
                         return vendor_name
+
     model = MODEL_ALIASES.get(model, model)
     if (
         "ada" in model
