@@ -168,21 +168,11 @@ async def complete(
         else:
             api_suffix = "/completions"
 
-        # Log request details to file
-        debug_info = {
-            "url": api_base + api_suffix,
-            "headers": {k: v if k.lower() != "authorization" else "Bearer [REDACTED]" for k, v in headers.items()},
-            "body": api_arguments
-        }
-        _log_debug_info(debug_info, "request")
-
         async with session.post(
             api_base + api_suffix, headers=headers, json=api_arguments
         ) as response:
             response.raise_for_status()
             api_response = await response.json()
-            # Log response to file
-            _log_debug_info(api_response, "response")
 
         try:
             return {
@@ -680,21 +670,17 @@ def untokenize(model: str, token_ids: List[int]) -> str:
 def pick_vendor(model, custom_config=None):
     if custom_config is not None:
         # Try exact matches first
-        print("Looking for exact matches", model)
         for vendor_name, vendor in custom_config.items():
             if vendor["provides"] is not None:
                 for pattern in vendor["provides"]:
                     if pattern == model:  # Exact match first
-                        print("Exact match found", vendor_name)
                         return vendor_name
         
         # Fall back to regex pattern matches
-        print("Looking for regex matches", model)
         for vendor_name, vendor in custom_config.items():
             if vendor["provides"] is not None:
                 for pattern in vendor["provides"]:
                     if re.fullmatch(pattern, model):
-                        print("Regex match found", vendor_name)
                         return vendor_name
 
     model = MODEL_ALIASES.get(model, model)
@@ -849,11 +835,3 @@ class InteractiveIntermodel(cmd.Cmd):
 
 if __name__ == "__main__":
     InteractiveIntermodel().cmdloop()
-
-def _log_debug_info(info: dict, prefix: str = "request"):
-    """Log debug information to a file with timestamp."""
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"intermodel_debug_{prefix}_{timestamp}.json"
-    with open(filename, "w") as f:
-        json.dump(info, f, indent=2)
-    print(f"\nDebug info written to: {filename}")
