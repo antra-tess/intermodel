@@ -124,6 +124,7 @@ async def complete(
             or model.startswith("o1")
             or model.startswith("openpipe:")
             or model.startswith("gpt4")
+            or model.startswith("chatgpt-4o")
             or model.startswith("deepseek-reasoner")
             or model.startswith("deepseek/deepseek-r1")
         ) and not model.endswith("-base"):
@@ -154,6 +155,7 @@ async def complete(
                     del api_arguments["logit_bias"]
                 if (
                     model.startswith("o1")
+                    or model.startswith("chatgpt-4o")
                     or model.startswith("deepseek-reasoner")
                     or model.startswith("deepseek/deepseek-r1")
                 ):
