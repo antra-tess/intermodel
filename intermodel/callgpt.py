@@ -127,6 +127,7 @@ async def complete(
             or model.startswith("grok")
             or model.startswith("deepseek-reasoner")
             or model.startswith("deepseek/deepseek-r1")
+            or model.startswith("aion")
             or api_base.startswith("https://integrate.api.nvidia.com")
         ) and not model.endswith("-base"):
             if messages is None:
@@ -576,7 +577,7 @@ def tokenize(model: str, string: str) -> List[int]:
     except NotImplementedError:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
-    if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith("chatgpt-4o") or model.startswith("grok"):
+    if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith("chatgpt-4o") or model.startswith("grok") or model.startswith("aion"):
         # tiktoken internally caches loaded tokenizers
         if model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
@@ -585,6 +586,8 @@ def tokenize(model: str, string: str) -> List[int]:
         elif model.startswith("chatgpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("grok"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")
+        elif model.startswith("aion"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         else:
             tokenizer = tiktoken.encoding_for_model(model)
@@ -717,6 +720,8 @@ def pick_vendor(model, custom_config=None):
         return "forefront"
     elif model.startswith("claude-"):
         return "anthropic"
+    elif model.startswith("aion"):
+        return "openai"  # aion models use OpenAI-compatible API
     elif "/" in model:
         return "huggingface"
     else:
