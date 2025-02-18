@@ -750,7 +750,7 @@ def max_token_length_inner(model):
     elif model.startswith("grok"):
         return 128_000
     elif model.startswith("aion"):
-        return 32_000  # 32k context window
+        return 30_000  # 32k context window
     elif model == "code-davinci-002":
         return 8001
     elif model.startswith("code"):
