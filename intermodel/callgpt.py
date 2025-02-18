@@ -173,8 +173,18 @@ async def complete(
         async with session.post(
             api_base + api_suffix, headers=headers, json=api_arguments
         ) as response:
-            response.raise_for_status()
             api_response = await response.json()
+            if response.status == 400:
+                error_info = {
+                    "request": {
+                        "url": api_base + api_suffix,
+                        "headers": {k: v if k.lower() != "authorization" else "Bearer [REDACTED]" for k, v in headers.items()},
+                        "body": api_arguments
+                    },
+                    "response": api_response
+                }
+                _log_error(error_info)
+            response.raise_for_status()
 
         try:
             return {
@@ -836,6 +846,15 @@ class InteractiveIntermodel(cmd.Cmd):
     def do_EOF(self, arg):
         """Exit"""
         return True
+
+
+def _log_error(info: dict):
+    """Log error information to a file with timestamp."""
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"intermodel_error_{timestamp}.json"
+    with open(filename, "w") as f:
+        json.dump(info, f, indent=2)
+    print(f"\nError details written to: {filename}")
 
 
 if __name__ == "__main__":
