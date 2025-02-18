@@ -757,6 +757,8 @@ def max_token_length_inner(model):
         return 4097
     elif model == "text-davinci-003" or model == "text-davinci-002":
         return 4097
+    elif model == "google/gemma-7b":
+        return 4097
     elif model in (
         "text-embedding-ada-002",
         "text-embedding-3-small",
