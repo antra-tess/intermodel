@@ -193,9 +193,9 @@ async def complete(
                 "completions": [
                     {
                         "text": (
-                            completion["text"]
+                            completion["text"].strip()
                             if api_suffix == "/completions"
-                            else completion["message"]["content"]
+                            else completion["message"]["content"].strip()
                         ),
                         "finish_reason": {
                             "reason": completion.get("finish_reason", "unknown")
