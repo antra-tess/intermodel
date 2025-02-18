@@ -151,7 +151,7 @@ async def complete(
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
-            if model.startswith("o1") or model.startswith("deepseek"):
+            if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com"):
                 if "logit_bias" in api_arguments:
                     del api_arguments["logit_bias"]
                 if (
@@ -166,6 +166,7 @@ async def complete(
                         api_arguments["include_reasoning"] = True
                     else:
                         reasoning_content_key = "reasoning_content"
+            # Remove empty logit_bias for NVIDIA endpoints
             api_suffix = "/chat/completions"
         else:
             api_suffix = "/completions"
