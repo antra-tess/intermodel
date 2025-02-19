@@ -189,6 +189,8 @@ async def complete(
                 _log_error(error_info)
             response.raise_for_status()
 
+        print(f"API Response: {api_response}")
+
         try:
             return {
                 "prompt": {"text": prompt if prompt is not None else "<|endoftext|>"},
