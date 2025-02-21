@@ -127,6 +127,7 @@ async def complete(
             or model.startswith("grok")
             or model.startswith("deepseek-reasoner")
             or model.startswith("deepseek/deepseek-r1")
+            or model.startswith("deepseek-ai/DeepSeek-R1-Zero")
             or model.startswith("aion")
             or api_base.startswith("https://integrate.api.nvidia.com")
         ) and not model.endswith("-base"):
@@ -160,6 +161,7 @@ async def complete(
                     or model.startswith("chatgpt-4o")
                     or model.startswith("deepseek-reasoner")
                     or model.startswith("deepseek/deepseek-r1")
+                    or model.startswith("deepseek-ai/DeepSeek-R1-Zero")
                     or model.startswith("grok")
                     or model.startswith("aion")
                 ):
