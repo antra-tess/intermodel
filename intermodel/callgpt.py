@@ -429,10 +429,15 @@ async def complete(
         else:
             finish_reason = "unknown"
 
-        # Extract thinking content if available
+        # Extract thinking content and text if available
         reasoning_content = None
-        if hasattr(response.content[0], "thinking"):
-            reasoning_content = response.content[0].thinking
+        text_content = ""
+        
+        for content_block in response.content:
+            if content_block.type == "thinking":
+                reasoning_content = content_block.thinking
+            elif content_block.type == "text":
+                text_content = content_block.value
 
         return {
             "prompt": {
@@ -440,7 +445,7 @@ async def complete(
             },
             "completions": [
                 {
-                    "text": response.content[0].text,
+                    "text": text_content,
                     "finish_reason": finish_reason,
                     "reasoning_content": reasoning_content
                 }
