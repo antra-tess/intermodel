@@ -437,7 +437,7 @@ async def complete(
             if content_block.type == "thinking":
                 reasoning_content = content_block.thinking
             elif content_block.type == "text":
-                text_content = content_block.value
+                text_content = content_block.text
 
         return {
             "prompt": {
