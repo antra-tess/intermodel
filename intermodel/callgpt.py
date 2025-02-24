@@ -412,6 +412,8 @@ async def complete(
                 kwargs["extra_body"] = {"steering": kwargs["steering"]}
                 del kwargs["steering"]
 
+        print(f"Messages: {messages}")
+
         response = await client.messages.create(
             model=model,
             messages=messages,
