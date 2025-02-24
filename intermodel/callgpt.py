@@ -363,11 +363,11 @@ async def complete(
             thinking_config = kwargs.pop("thinking")
             if isinstance(thinking_config, dict):
                 if "type" not in thinking_config:
-                    thinking_config["type"] = "thinking"
+                    thinking_config["type"] = "enabled"
                 kwargs["thinking"] = thinking_config
             elif isinstance(thinking_config, bool) and thinking_config:
                 kwargs["thinking"] = {
-                    "type": "thinking",
+                    "type": "enabled",
                     "budget_tokens": max(2048, max_tokens // 2)
                 }
 
