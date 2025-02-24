@@ -370,12 +370,6 @@ async def complete(
                     "type": "enabled",
                     "budget_tokens": max(2048, max_tokens // 2)
                 }
-            
-            # When thinking is enabled, we need to ensure we don't send a prefilled assistant message
-            if messages is not None:
-                # Remove any trailing assistant message that would be completed by the API
-                if messages[-1]["role"] == "assistant":
-                    messages = messages[:-1]
 
         if messages is None:
             if (
@@ -391,9 +385,6 @@ async def complete(
                         prompt, "user"
                     )
                 ]
-                # Remove trailing assistant message if thinking is enabled
-                if "thinking" in kwargs and messages[-1]["role"] == "assistant":
-                    messages = messages[:-1]
             else:
                 if kwargs.get("system", None) is None:
                     kwargs["system"] = (
@@ -411,8 +402,6 @@ async def complete(
             if "steering" in kwargs:
                 kwargs["extra_body"] = {"steering": kwargs["steering"]}
                 del kwargs["steering"]
-
-        print(f"Messages: {messages}")
 
         response = await client.messages.create(
             model=model,
