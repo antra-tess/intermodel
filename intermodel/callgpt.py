@@ -403,15 +403,25 @@ async def complete(
                 kwargs["extra_body"] = {"steering": kwargs["steering"]}
                 del kwargs["steering"]
 
-        response = await client.messages.create(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens or 16,
-            temperature=temperature or 1,
-            top_p=top_p or 1,
-            stop_sequences=stop or list(),
-            **kwargs,
-        )
+        if 'thinking' in kwargs:
+            response = await client.messages.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens or 16,
+                temperature=temperature or 1,
+                stop_sequences=stop or list(),
+                **kwargs,
+            )
+        else:
+            response = await client.messages.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens or 16,
+                temperature=temperature or 1,
+                top_p=top_p or 1,
+                stop_sequences=stop or list(),
+                **kwargs,
+            )
         if response.stop_reason == "stop_sequence":
             finish_reason = "stop"
         elif response.stop_reason == "max_tokens":
