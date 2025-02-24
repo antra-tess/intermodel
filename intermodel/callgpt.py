@@ -362,9 +362,14 @@ async def complete(
         if model.startswith("claude-3") and "thinking" in kwargs:
             thinking_config = kwargs.pop("thinking")
             if isinstance(thinking_config, dict):
+                if "type" not in thinking_config:
+                    thinking_config["type"] = "thinking"
                 kwargs["thinking"] = thinking_config
             elif isinstance(thinking_config, bool) and thinking_config:
-                kwargs["thinking"] = {"budget_tokens": max(2048, max_tokens // 2)}
+                kwargs["thinking"] = {
+                    "type": "thinking",
+                    "budget_tokens": max(2048, max_tokens // 2)
+                }
 
         if messages is None:
             if (
