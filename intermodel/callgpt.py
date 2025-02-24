@@ -358,6 +358,14 @@ async def complete(
             if value is None:
                 del kwargs[key]
 
+        # Handle thinking parameter for Claude 3
+        if model.startswith("claude-3") and "thinking" in kwargs:
+            thinking_config = kwargs.pop("thinking")
+            if isinstance(thinking_config, dict):
+                kwargs["thinking"] = thinking_config
+            elif isinstance(thinking_config, bool) and thinking_config:
+                kwargs["thinking"] = {"budget_tokens": max(2048, max_tokens // 2)}
+
         if messages is None:
             if (
                 message_history_format is not None
@@ -405,12 +413,22 @@ async def complete(
             finish_reason = "length"
         else:
             finish_reason = "unknown"
+
+        # Extract thinking content if available
+        reasoning_content = None
+        if hasattr(response.content[0], "thinking"):
+            reasoning_content = response.content[0].thinking
+
         return {
             "prompt": {
                 "text": prompt,
             },
             "completions": [
-                {"text": response.content[0].text, "finish_reason": finish_reason}
+                {
+                    "text": response.content[0].text,
+                    "finish_reason": finish_reason,
+                    "reasoning_content": reasoning_content
+                }
             ],
             "model": model,
             "id": uuid.uuid4(),
