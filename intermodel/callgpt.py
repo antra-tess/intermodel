@@ -628,6 +628,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("chatgpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
+        elif model.startswith("gpt-4.5-preview"):
+            tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("grok"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("aion"):
@@ -785,6 +787,8 @@ def max_token_length_inner(model):
         return 32769
     elif model.startswith("o1"):
         return 128_000
+    elif model == "gpt-4.5-preview":
+        return 128_000  # gpt-4.5-preview has a 128k context window
     elif model.startswith("gpt-4"):
         return 8193
     elif model.startswith("chatgpt-4o"):
