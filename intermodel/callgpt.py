@@ -622,7 +622,7 @@ def tokenize(model: str, string: str) -> List[int]:
     except NotImplementedError:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
-    if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith("chatgpt-4o") or model.startswith("grok") or model.startswith("aion"):
+    if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith("chatgpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith("DeepHermes") or model.startswith("google/gemma-3"):
         # tiktoken internally caches loaded tokenizers
         if model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
