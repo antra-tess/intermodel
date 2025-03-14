@@ -641,7 +641,7 @@ def tokenize(model: str, string: str) -> List[int]:
         elif model.startswith("DeepHermes-3-Mistral-24B-Preview"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         else:
-            tokenizer = tiktoken.encoding_for_model(model)
+            tokenizer = tiktoken.encoding_for_model("gpt2")
         # encode special tokens as normal
         # XXX: make this an option
         return tokenizer.encode(string, allowed_special="all")
