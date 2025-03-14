@@ -129,6 +129,7 @@ async def complete(
             or model.startswith("deepseek/deepseek-r1")
             or model.startswith("deepseek-ai/DeepSeek-R1-Zero")
             or model.startswith("aion")
+            or model.startswith("google/gemma-3-27b-it")
             or api_base.startswith("https://integrate.api.nvidia.com")
         ) and not model.endswith("-base"):
             if messages is None:
@@ -634,6 +635,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("aion"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
+        elif model.startswith("google/gemma-3-27b-it"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")
         else:
             tokenizer = tiktoken.encoding_for_model(model)
         # encode special tokens as normal
@@ -813,6 +816,8 @@ def max_token_length_inner(model):
         return 4097
     elif model == "google/gemma-7b":
         return 4097
+    elif model == "google/gemma-3-27b-it":
+        return 127000
     elif model in (
         "text-embedding-ada-002",
         "text-embedding-3-small",
