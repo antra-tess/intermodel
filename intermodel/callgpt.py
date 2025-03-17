@@ -501,6 +501,8 @@ async def complete(
         from io import BytesIO
         from PIL import Image
         import sys
+        import datetime
+        import os
 
         if "google_api_key" not in kwargs:
             kwargs["google_api_key"] = os.getenv("GOOGLE_API_KEY")
@@ -531,6 +533,20 @@ async def complete(
                     image_data = part.inline_data.data
                     image_size = len(image_data) if image_data else 0
                     print(f"[DEBUG] Received image data: {image_size} bytes", file=sys.stderr)
+                    
+                    # Save image to file for debugging
+                    if image_data:
+                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        debug_dir = os.path.join(os.getcwd(), "debug_images")
+                        os.makedirs(debug_dir, exist_ok=True)
+                        image_filename = os.path.join(debug_dir, f"gemini_image_{timestamp}.png")
+                        
+                        try:
+                            with open(image_filename, "wb") as f:
+                                f.write(image_data)
+                            print(f"[DEBUG] Saved image to: {image_filename}", file=sys.stderr)
+                        except Exception as e:
+                            print(f"[DEBUG] Failed to save image: {str(e)}", file=sys.stderr)
             
             return {
                 "prompt": {"text": prompt},
