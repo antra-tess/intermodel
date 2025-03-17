@@ -494,6 +494,82 @@ async def complete(
             max_tokens=max_tokens,
             num_completions=num_completions,
         )
+    elif vendor == "gemini":
+        from google import genai
+        from google.genai import types
+        import base64
+        from io import BytesIO
+        from PIL import Image
+
+        if "google_api_key" not in kwargs:
+            kwargs["google_api_key"] = os.getenv("GOOGLE_API_KEY")
+        
+        client = genai.Client(api_key=kwargs["google_api_key"])
+        
+        # Handle image generation models
+        if model == "gemini-2.0-flash-exp-image-generation":
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=['Text', 'Image']
+                )
+            )
+            
+            text_content = ""
+            image_data = None
+            
+            for part in response.candidates[0].content.parts:
+                if part.text is not None:
+                    text_content = part.text
+                elif part.inline_data is not None:
+                    image_data = part.inline_data.data
+            
+            return {
+                "prompt": {"text": prompt},
+                "completions": [
+                    {
+                        "text": text_content,
+                        "finish_reason": "stop",
+                        "image_data": base64.b64encode(image_data).decode() if image_data else None
+                    }
+                ],
+                "model": model,
+                "id": str(uuid.uuid4()),
+                "created": datetime.datetime.now(),
+                "usage": {
+                    "vendor": vendor,
+                }
+            }
+        else:
+            # Handle regular text models
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt,
+                generation_config=types.GenerationConfig(
+                    temperature=temperature or 1.0,
+                    top_p=top_p or 1.0,
+                    top_k=top_k or 40,
+                    max_output_tokens=max_tokens or 2048,
+                    stop_sequences=stop or [],
+                )
+            )
+            
+            return {
+                "prompt": {"text": prompt},
+                "completions": [
+                    {
+                        "text": response.text,
+                        "finish_reason": "stop"
+                    }
+                ],
+                "model": model,
+                "id": str(uuid.uuid4()),
+                "created": datetime.datetime.now(),
+                "usage": {
+                    "vendor": vendor,
+                }
+            }
     else:
         raise NotImplementedError(f"Unknown vendor {vendor}")
 
@@ -622,7 +698,7 @@ def tokenize(model: str, string: str) -> List[int]:
     except NotImplementedError:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
-    if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith("chatgpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith("DeepHermes") or model.startswith("google/gemma-3"):
+    if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith("chatgpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith("DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-"):
         # tiktoken internally caches loaded tokenizers
         if model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
@@ -640,6 +716,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("DeepHermes-3-Mistral-24B-Preview"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
+        elif model.startswith("gemini-"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         else:
             tokenizer = tiktoken.encoding_for_model(model)
         # encode special tokens as normal
@@ -773,6 +851,8 @@ def pick_vendor(model, custom_config=None):
         return "anthropic"
     elif model.startswith("aion"):
         return "openai"  # aion models use OpenAI-compatible API
+    elif model.startswith("gemini-"):
+        return "gemini"
     elif "/" in model:
         return "huggingface"
     else:
@@ -849,6 +929,14 @@ def max_token_length_inner(model):
         or "cushman" in model
     ):
         return 2049
+    elif model == "google/gemma-3-27b-it":
+        return 127000
+    elif model == "DeepHermes-3-Mistral-24B-Preview":
+        return 31000
+    elif model.startswith("gemini-"):
+        if model == "gemini-2.0-flash-exp-image-generation":
+            return 127000  # Image generation model has shorter context
+        return 127000  # Standard Gemini models have 32k context
     else:
         try:
             import huggingface_hub
