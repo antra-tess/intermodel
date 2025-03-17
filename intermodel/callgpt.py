@@ -543,10 +543,11 @@ async def complete(
             }
         else:
             # Handle regular text models
+
             response = client.models.generate_content(
                 model=model,
                 contents=prompt,
-                generation_config=types.GenerationConfig(
+                config=types.GenerateContentConfig(
                     temperature=temperature or 1.0,
                     top_p=top_p or 1.0,
                     top_k=top_k or 40,
@@ -554,7 +555,7 @@ async def complete(
                     stop_sequences=stop or [],
                 )
             )
-            
+     
             return {
                 "prompt": {"text": prompt},
                 "completions": [
@@ -851,8 +852,10 @@ def pick_vendor(model, custom_config=None):
         return "anthropic"
     elif model.startswith("aion"):
         return "openai"  # aion models use OpenAI-compatible API
+    elif model.startswith("google/"):
+        return "openai"  # Google models go through OpenRouter
     elif model.startswith("gemini-"):
-        return "gemini"
+        return "gemini"  # Gemini models go directly
     elif "/" in model:
         return "huggingface"
     else:
