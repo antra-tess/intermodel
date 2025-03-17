@@ -500,6 +500,7 @@ async def complete(
         import base64
         from io import BytesIO
         from PIL import Image
+        import sys
 
         if "google_api_key" not in kwargs:
             kwargs["google_api_key"] = os.getenv("GOOGLE_API_KEY")
@@ -508,6 +509,9 @@ async def complete(
         
         # Handle image generation models
         if model == "gemini-2.0-flash-exp-image-generation":
+            print(f"[DEBUG] Sending image generation request to Gemini model: {model}", file=sys.stderr)
+            print(f"[DEBUG] Prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}", file=sys.stderr)
+            
             response = client.models.generate_content(
                 model=model,
                 contents=prompt,
@@ -522,8 +526,11 @@ async def complete(
             for part in response.candidates[0].content.parts:
                 if part.text is not None:
                     text_content = part.text
+                    print(f"[DEBUG] Received text response: {text_content[:100]}{'...' if len(text_content) > 100 else ''}", file=sys.stderr)
                 elif part.inline_data is not None:
                     image_data = part.inline_data.data
+                    image_size = len(image_data) if image_data else 0
+                    print(f"[DEBUG] Received image data: {image_size} bytes", file=sys.stderr)
             
             return {
                 "prompt": {"text": prompt},
@@ -543,7 +550,9 @@ async def complete(
             }
         else:
             # Handle regular text models
-
+            print(f"[DEBUG] Sending text request to Gemini model: {model}", file=sys.stderr)
+            print(f"[DEBUG] Prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}", file=sys.stderr)
+            
             response = client.models.generate_content(
                 model=model,
                 contents=prompt,
@@ -555,6 +564,8 @@ async def complete(
                     stop_sequences=stop or [],
                 )
             )
+            
+            print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
      
             return {
                 "prompt": {"text": prompt},
@@ -581,7 +592,9 @@ def download_and_encode_image(url):
     import base64
     import requests
     from mimetypes import guess_type
+    import sys
 
+    print(f"[DEBUG] Downloading image from: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
     response = requests.get(url)
     response.raise_for_status()
     image_data = response.content
@@ -590,15 +603,19 @@ def download_and_encode_image(url):
         or guess_type(url)[0]
         or "application/octet-stream"
     )
+    print(f"[DEBUG] Downloaded image: {len(image_data)} bytes, mime type: {mime_type}", file=sys.stderr)
     return base64.b64encode(image_data).decode(), mime_type
 
 
 def process_image_message(content_string):
     import requests
+    import sys
 
     sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", content_string)
     if len(sections) == 1:
         return content_string
+    
+    print(f"[DEBUG] Processing message with {(len(sections)-1)//2} embedded images", file=sys.stderr)
     content = []
     for i, section in enumerate(sections):
         if i % 2 == 0:
@@ -606,6 +623,7 @@ def process_image_message(content_string):
                 content.append({"type": "text", "text": section})
         else:
             try:
+                print(f"[DEBUG] Processing image URL: {section[:100]}{'...' if len(section) > 100 else ''}", file=sys.stderr)
                 base64_data, mime_type = download_and_encode_image(section)
                 content.append(
                     {
@@ -617,12 +635,14 @@ def process_image_message(content_string):
                         },
                     }
                 )
-            except requests.RequestException:
+                print(f"[DEBUG] Added image to message content", file=sys.stderr)
+            except requests.RequestException as e:
+                print(f"[DEBUG] Failed to download image: {str(e)}", file=sys.stderr)
                 continue
     return content
 
 
-def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
+def process_image_messages(prompt: str, prompt_role: str = "user") -> list:
     """Convert a prompt containing image URLs into a messages array.
 
     Args:
@@ -633,7 +653,10 @@ def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
         list: Array of message objects with text and images
     """
     import requests
+    import sys
 
+    print(f"[DEBUG] Processing image messages with role: {prompt_role}", file=sys.stderr)
+    
     messages = []
     sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
 
@@ -641,6 +664,9 @@ def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
     MAX_IMAGES = 10
     total_images = (len(sections) - 1) // 2
     images_to_process = min(total_images, MAX_IMAGES)
+    
+    print(f"[DEBUG] Found {total_images} images, will process {images_to_process}", file=sys.stderr)
+    
     image_counter = 0
 
     # Process each section
@@ -652,6 +678,7 @@ def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
             image_counter += 1
             if total_images - image_counter < images_to_process:
                 try:
+                    print(f"[DEBUG] Processing image URL: {section[:100]}{'...' if len(section) > 100 else ''}", file=sys.stderr)
                     base64_data, mime_type = download_and_encode_image(section)
                     image_content = {
                         "type": "image",
@@ -673,7 +700,9 @@ def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
                             ]
                     else:
                         messages.append({"role": "user", "content": [image_content]})
-                except requests.RequestException:
+                    print(f"[DEBUG] Added image to messages array", file=sys.stderr)
+                except requests.RequestException as e:
+                    print(f"[DEBUG] Failed to download image: {str(e)}", file=sys.stderr)
                     continue  # Skip failed image downloads
             else:
                 # Keep URL markers for images beyond processing limit
@@ -683,6 +712,7 @@ def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
                 else:
                     messages.append({"role": prompt_role, "content": url_text})
 
+    print(f"[DEBUG] Finished processing image messages, created {len(messages)} messages", file=sys.stderr)
     return messages
 
 
