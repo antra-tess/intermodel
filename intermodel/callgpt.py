@@ -509,14 +509,29 @@ async def complete(
         
         client = genai.Client(api_key=kwargs["google_api_key"])
         
+        # Process chat history if provided
+        if messages is None and message_history_format is not None and message_history_format.name == "chat":
+            messages = [
+                {
+                    "role": message["role"],
+                    "content": process_image_message(message["content"]),
+                }
+                for message in message_history_format.format_messages(prompt, "user")
+            ]
+            print(f"[DEBUG] Processed chat history for Gemini: {len(messages)} messages", file=sys.stderr)
+        
         # Handle image generation models
         if model == "gemini-2.0-flash-exp-image-generation":
             print(f"[DEBUG] Sending image generation request to Gemini model: {model}", file=sys.stderr)
-            print(f"[DEBUG] Prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}", file=sys.stderr)
+            print(f"[DEBUG] Prompt: {prompt[:100] if prompt else 'Using messages array'}{'...' if prompt and len(prompt) > 100 else ''}", file=sys.stderr)
+            
+            # Use messages if available, otherwise use prompt
+            content_to_send = messages if messages is not None else prompt
+            print(f"[DEBUG] Using {'messages array' if messages is not None else 'prompt string'} for content", file=sys.stderr)
             
             response = client.models.generate_content(
                 model=model,
-                contents=prompt,
+                contents=content_to_send,
                 config=types.GenerateContentConfig(
                     response_modalities=['Text', 'Image']
                 )
@@ -567,11 +582,15 @@ async def complete(
         else:
             # Handle regular text models
             print(f"[DEBUG] Sending text request to Gemini model: {model}", file=sys.stderr)
-            print(f"[DEBUG] Prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}", file=sys.stderr)
+            print(f"[DEBUG] Prompt: {prompt[:100] if prompt else 'Using messages array'}{'...' if prompt and len(prompt) > 100 else ''}", file=sys.stderr)
+            
+            # Use messages if available, otherwise use prompt
+            content_to_send = messages if messages is not None else prompt
+            print(f"[DEBUG] Using {'messages array' if messages is not None else 'prompt string'} for content", file=sys.stderr)
             
             response = client.models.generate_content(
                 model=model,
-                contents=prompt,
+                contents=content_to_send,
                 config=types.GenerateContentConfig(
                     temperature=temperature or 1.0,
                     top_p=top_p or 1.0,
