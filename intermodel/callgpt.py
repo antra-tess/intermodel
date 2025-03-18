@@ -534,7 +534,14 @@ async def complete(
     elif vendor == "gemini":
         from google import genai
         from google.genai import types
-
+        import base64
+        from io import BytesIO
+        from PIL import Image
+        import sys
+        import datetime
+        import os
+        import requests
+        from mimetypes import guess_type
 
         if "google_api_key" not in kwargs:
             kwargs["google_api_key"] = os.getenv("GOOGLE_API_KEY")
@@ -563,10 +570,21 @@ async def complete(
                     else:  # Image URL
                         image_urls.append(section.strip())
                 
+                # Respect max_images parameter
+                total_images = len(image_urls)
+                images_to_process = min(total_images, max_images)
+                
+                print(f"[DEBUG] Found {total_images} images, will process {images_to_process} (max limit: {max_images})", file=sys.stderr)
+                
+                if images_to_process < total_images:
+                    # Only keep the last images_to_process images
+                    image_urls = image_urls[-images_to_process:]
+                    print(f"[DEBUG] Limiting to last {images_to_process} images for remixing", file=sys.stderr)
+                
                 # Combine text parts into a single prompt
                 text_prompt = " ".join(text_parts)
                 print(f"[DEBUG] Text prompt: {text_prompt[:100]}{'...' if len(text_prompt) > 100 else ''}", file=sys.stderr)
-                print(f"[DEBUG] Found {len(image_urls)} images to remix", file=sys.stderr)
+                print(f"[DEBUG] Processing {len(image_urls)} images for remixing", file=sys.stderr)
                 
                 # Download and prepare images for generation
                 image_parts = []
