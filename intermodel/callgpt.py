@@ -620,9 +620,30 @@ async def complete(
                     model=model,
                     contents=contents,
                     config=types.GenerateContentConfig(
-                        response_modalities=['Text', 'Image']
+                        response_modalities=['Text', 'Image'],
+                        safety_settings=[
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                        ]
                     )
-                )
                 
                 text_content = ""
                 image_data = None
@@ -737,6 +758,28 @@ async def complete(
                         top_k=top_k or 40,
                         max_output_tokens=max_tokens or 2048,
                         stop_sequences=stop or [],
+                        safety_settings=[
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                            types.SafetySetting(
+                                category=types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                            ),
+                        ]
                     )
                 )
                 
