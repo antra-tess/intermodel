@@ -644,6 +644,7 @@ async def complete(
                             ),
                         ]
                     )
+                )
                 
                 text_content = ""
                 image_data = None
