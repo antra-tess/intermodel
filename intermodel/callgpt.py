@@ -649,11 +649,11 @@ async def complete(
                 text_content = ""
                 image_data = None
 
-                if len(response.candidates) == 0:
+                if not reseponse.canddidates or len(response.candidates) == 0:
                     print(f"[DEBUG] No candidates returned from Gemini", file=sys.stderr)
                     # print the response
                     print(f"[DEBUG] Response: {response}", file=sys.stderr)
-                    
+
                     raise Exception("No candidates returned from Gemini")
                 
                 for part in response.candidates[0].content.parts:
