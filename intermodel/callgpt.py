@@ -12,6 +12,13 @@ import os
 import uuid
 import hashlib
 from typing import Union, List, Optional, Iterable
+import base64
+from io import BytesIO
+from PIL import Image
+import sys
+import datetime
+import requests
+from mimetypes import guess_type
 
 import aiohttp
 import tenacity
@@ -497,14 +504,7 @@ async def complete(
     elif vendor == "gemini":
         from google import genai
         from google.genai import types
-        import base64
-        from io import BytesIO
-        from PIL import Image
-        import sys
-        import datetime
-        import os
-        import requests
-        from mimetypes import guess_type
+
 
         if "google_api_key" not in kwargs:
             kwargs["google_api_key"] = os.getenv("GOOGLE_API_KEY")
