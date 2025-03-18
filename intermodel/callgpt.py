@@ -69,6 +69,7 @@ async def complete(
     message_history_format = kwargs.get("message_history_format", None)
     messages = kwargs.get("messages", None)
     name = kwargs.get("name", None)
+    max_images = kwargs.get("max_images", 10)  # Default to 10 images
     kwargs = kwargs.get("continuation_options", {})
     tokenize_as = parse_model_string(MODEL_ALIASES.get(model, model)).tokenize_as
     model = parse_model_string(MODEL_ALIASES.get(model, model)).model
@@ -405,7 +406,7 @@ async def complete(
                     ]
                 else:
                     messages = []
-                messages = messages + process_image_messages(prompt)
+                messages = messages + process_image_messages(prompt, max_images=max_images)
 
         if vendor == "anthropic-steering-preview":
             kwargs["extra_headers"] = {"anthropic-beta": "steering-2024-06-04"}
@@ -871,12 +872,13 @@ def process_image_message(content_string):
     return content
 
 
-def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
+def process_image_messages(prompt: str, prompt_role: str = "user", max_images: int = 10) -> list:
     """Convert a prompt containing image URLs into a messages array.
 
     Args:
         prompt (str): The input prompt text with image URL markers
         prompt_role (str): The role to use for text messages (default: "user")
+        max_images (int): Maximum number of images to process (default: 10)
 
     Returns:
         list: Array of message objects with text and images
@@ -890,11 +892,10 @@ def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
     sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
 
     # Constants
-    MAX_IMAGES = 10
     total_images = (len(sections) - 1) // 2
-    images_to_process = min(total_images, MAX_IMAGES)
+    images_to_process = min(total_images, max_images)
     
-    print(f"[DEBUG] Found {total_images} images, will process {images_to_process}", file=sys.stderr)
+    print(f"[DEBUG] Found {total_images} images, will process {images_to_process} (max limit: {max_images})", file=sys.stderr)
     
     image_counter = 0
 
