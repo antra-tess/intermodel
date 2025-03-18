@@ -820,7 +820,7 @@ def process_image_message(content_string):
     return content
 
 
-def process_image_messages(prompt: str, prompt_role: str = "user") -> list:
+def process_image_messages(prompt: str, prompt_role: str = "assistant") -> list:
     """Convert a prompt containing image URLs into a messages array.
 
     Args:
