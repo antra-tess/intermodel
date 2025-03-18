@@ -353,6 +353,7 @@ async def complete(
         }
     elif vendor.startswith("anthropic"):
         import anthropic
+        import json
 
         if num_completions not in [None, 1]:
             raise NotImplementedError("Anthropic only supports num_completions=1")
@@ -411,6 +412,32 @@ async def complete(
             if "steering" in kwargs:
                 kwargs["extra_body"] = {"steering": kwargs["steering"]}
                 del kwargs["steering"]
+
+        # Create a deep copy of the request to log
+        request_payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens or 16,
+            "temperature": temperature or 1,
+            "top_p": top_p if 'thinking' not in kwargs else None,
+            "stop_sequences": stop or list(),
+        }
+        # Add any extra kwargs
+        for k, v in kwargs.items():
+            request_payload[k] = v
+        
+        # Remove None values for cleaner output
+        request_payload = {k: v for k, v in request_payload.items() if v is not None}
+        
+        # Log the full JSON request, with API key redacted
+        print(f"[DEBUG] Full Anthropic API request:", file=sys.stderr)
+        # Use a custom encoder to handle non-serializable objects
+        class CustomEncoder(json.JSONEncoder):
+            def default(self, obj):
+                return str(obj)
+        
+        # Pretty print the JSON for readability
+        print(json.dumps(request_payload, indent=2, cls=CustomEncoder), file=sys.stderr)
 
         if 'thinking' in kwargs:
             response = await client.messages.create(
