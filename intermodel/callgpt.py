@@ -649,7 +649,7 @@ async def complete(
                 text_content = ""
                 image_data = None
 
-                if not reseponse.candidates or len(response.candidates) == 0:
+                if not response.candidates or len(response.candidates) == 0:
                     print(f"[DEBUG] No candidates returned from Gemini", file=sys.stderr)
                     # print the response
                     print(f"[DEBUG] Response: {response}", file=sys.stderr)
