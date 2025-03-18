@@ -503,120 +503,234 @@ async def complete(
         import sys
         import datetime
         import os
+        import requests
+        from mimetypes import guess_type
 
         if "google_api_key" not in kwargs:
             kwargs["google_api_key"] = os.getenv("GOOGLE_API_KEY")
         
         client = genai.Client(api_key=kwargs["google_api_key"])
         
-        # Process chat history if provided
-        if messages is None and message_history_format is not None and message_history_format.name == "chat":
-            messages = [
-                {
-                    "role": message["role"],
-                    "content": process_image_message(message["content"]),
-                }
-                for message in message_history_format.format_messages(prompt, "user")
-            ]
-            print(f"[DEBUG] Processed chat history for Gemini: {len(messages)} messages", file=sys.stderr)
-        
         # Handle image generation models
         if model == "gemini-2.0-flash-exp-image-generation":
             print(f"[DEBUG] Sending image generation request to Gemini model: {model}", file=sys.stderr)
-            print(f"[DEBUG] Prompt: {prompt[:100] if prompt else 'Using messages array'}{'...' if prompt and len(prompt) > 100 else ''}", file=sys.stderr)
             
-            # Use messages if available, otherwise use prompt
-            content_to_send = messages if messages is not None else prompt
-            print(f"[DEBUG] Using {'messages array' if messages is not None else 'prompt string'} for content", file=sys.stderr)
-            
-            response = client.models.generate_content(
-                model=model,
-                contents=content_to_send,
-                config=types.GenerateContentConfig(
-                    response_modalities=['Text', 'Image']
-                )
-            )
-            
-            text_content = ""
-            image_data = None
-            
-            for part in response.candidates[0].content.parts:
-                if part.text is not None:
-                    text_content = part.text
-                    print(f"[DEBUG] Received text response: {text_content[:100]}{'...' if len(text_content) > 100 else ''}", file=sys.stderr)
-                elif part.inline_data is not None:
-                    image_data = part.inline_data.data
-                    image_size = len(image_data) if image_data else 0
-                    print(f"[DEBUG] Received image data: {image_size} bytes", file=sys.stderr)
-                    
-                    # Save image to file for debugging
-                    if image_data:
-                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                        debug_dir = os.path.join(os.getcwd(), "debug_images")
-                        os.makedirs(debug_dir, exist_ok=True)
-                        image_filename = os.path.join(debug_dir, f"gemini_image_{timestamp}.png")
+            # Check if prompt contains image URLs for remixing
+            if "<|begin_of_img_url|>" in prompt and "<|end_of_img_url|>" in prompt:
+                print(f"[DEBUG] Found image URLs in prompt, processing for image remixing", file=sys.stderr)
+                
+                # Parse out the text and image URLs
+                sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
+                
+                # Extract text prompt and image URLs
+                text_parts = []
+                image_urls = []
+                
+                for i, section in enumerate(sections):
+                    if i % 2 == 0:  # Text section
+                        if section.strip():
+                            text_parts.append(section.strip())
+                    else:  # Image URL
+                        image_urls.append(section.strip())
+                
+                # Combine text parts into a single prompt
+                text_prompt = " ".join(text_parts)
+                print(f"[DEBUG] Text prompt: {text_prompt[:100]}{'...' if len(text_prompt) > 100 else ''}", file=sys.stderr)
+                print(f"[DEBUG] Found {len(image_urls)} images to remix", file=sys.stderr)
+                
+                # Download and prepare images for generation
+                image_parts = []
+                for url in image_urls:
+                    try:
+                        print(f"[DEBUG] Processing image URL: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
                         
-                        try:
-                            with open(image_filename, "wb") as f:
-                                f.write(image_data)
-                            print(f"[DEBUG] Saved image to: {image_filename}", file=sys.stderr)
-                        except Exception as e:
-                            print(f"[DEBUG] Failed to save image: {str(e)}", file=sys.stderr)
+                        # Download the image
+                        response = requests.get(url)
+                        response.raise_for_status()
+                        image_data = response.content
+                        
+                        mime_type = (
+                            response.headers.get("content-type")
+                            or guess_type(url)[0]
+                            or "image/jpeg"
+                        )
+                        
+                        # Create a Part object with the image for Gemini
+                        image_part = types.Part(
+                            inline_data=types.Blob(
+                                mime_type=mime_type,
+                                data=image_data
+                            )
+                        )
+                        image_parts.append(image_part)
+                        print(f"[DEBUG] Added image to generation request ({len(image_data)} bytes)", file=sys.stderr)
+                    except Exception as e:
+                        print(f"[DEBUG] Failed to process image: {str(e)}", file=sys.stderr)
+                        continue
+                
+                # Create the content array with text and images
+                if text_prompt:
+                    # Add text prompt first
+                    contents = [text_prompt]
+                    # Then add the image parts
+                    contents.extend(image_parts)
+                else:
+                    # Only images, but add a minimal prompt
+                    contents = ["Remix the following images:"]
+                    contents.extend(image_parts)
+                
+                print(f"[DEBUG] Sending request with {len(contents)} content parts", file=sys.stderr)
+            else:
+                # No images, just text prompt
+                contents = prompt
+                print(f"[DEBUG] No images found, using text prompt only", file=sys.stderr)
             
-            return {
-                "prompt": {"text": prompt},
-                "completions": [
-                    {
-                        "text": text_content,
-                        "finish_reason": "stop",
-                        "image_data": base64.b64encode(image_data).decode() if image_data else None
+            # Generate content with text and images
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_modalities=['Text', 'Image']
+                    )
+                )
+                
+                text_content = ""
+                image_data = None
+                
+                for part in response.candidates[0].content.parts:
+                    if part.text is not None:
+                        text_content = part.text
+                        print(f"[DEBUG] Received text response: {text_content[:100]}{'...' if len(text_content) > 100 else ''}", file=sys.stderr)
+                    elif part.inline_data is not None:
+                        image_data = part.inline_data.data
+                        image_size = len(image_data) if image_data else 0
+                        print(f"[DEBUG] Received image data: {image_size} bytes", file=sys.stderr)
+                        
+                        # Save image to file for debugging
+                        if image_data:
+                            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                            debug_dir = os.path.join(os.getcwd(), "debug_images")
+                            os.makedirs(debug_dir, exist_ok=True)
+                            image_filename = os.path.join(debug_dir, f"gemini_image_{timestamp}.png")
+                            
+                            try:
+                                with open(image_filename, "wb") as f:
+                                    f.write(image_data)
+                                print(f"[DEBUG] Saved image to: {image_filename}", file=sys.stderr)
+                            except Exception as e:
+                                print(f"[DEBUG] Failed to save image: {str(e)}", file=sys.stderr)
+                
+                return {
+                    "prompt": {"text": prompt},
+                    "completions": [
+                        {
+                            "text": text_content,
+                            "finish_reason": "stop",
+                            "image_data": base64.b64encode(image_data).decode() if image_data else None
+                        }
+                    ],
+                    "model": model,
+                    "id": str(uuid.uuid4()),
+                    "created": datetime.datetime.now(),
+                    "usage": {
+                        "vendor": vendor,
                     }
-                ],
-                "model": model,
-                "id": str(uuid.uuid4()),
-                "created": datetime.datetime.now(),
-                "usage": {
-                    "vendor": vendor,
                 }
-            }
+            except Exception as e:
+                print(f"[DEBUG] Error generating content: {str(e)}", file=sys.stderr)
+                raise
         else:
             # Handle regular text models
             print(f"[DEBUG] Sending text request to Gemini model: {model}", file=sys.stderr)
-            print(f"[DEBUG] Prompt: {prompt[:100] if prompt else 'Using messages array'}{'...' if prompt and len(prompt) > 100 else ''}", file=sys.stderr)
+            print(f"[DEBUG] Content to send: {prompt[:100]}{'...' if len(prompt) > 100 else ''}", file=sys.stderr)
             
-            # Use messages if available, otherwise use prompt
-            content_to_send = messages if messages is not None else prompt
-            print(f"[DEBUG] Using {'messages array' if messages is not None else 'prompt string'} for content", file=sys.stderr)
+            # Convert messages to format expected by Gemini
+            content_to_send = prompt  # Default to using prompt
             
-            response = client.models.generate_content(
-                model=model,
-                contents=content_to_send,
-                config=types.GenerateContentConfig(
-                    temperature=temperature or 1.0,
-                    top_p=top_p or 1.0,
-                    top_k=top_k or 40,
-                    max_output_tokens=max_tokens or 2048,
-                    stop_sequences=stop or [],
+            # Process message_history_format if no messages provided
+            if messages is None and message_history_format is not None and message_history_format.name == "chat":
+                # Extract messages from message_history_format
+                messages = message_history_format.format_messages(prompt, "user")
+                print(f"[DEBUG] Extracted {len(messages)} messages from chat history format", file=sys.stderr)
+            
+            if messages is not None:
+                # Gemini doesn't use the role/content format directly
+                # We need to convert it to a simple string
+                print(f"[DEBUG] Converting {len(messages)} messages to Gemini format", file=sys.stderr)
+                
+                # For simple text messages, we'll concatenate them with user/assistant prefixes
+                content_parts = []
+                
+                for msg in messages:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    
+                    # Handle string content
+                    if isinstance(content, str):
+                        if role == "system":
+                            content_parts.append(f"System: {content}\n\n")
+                        elif role == "user":
+                            content_parts.append(f"User: {content}\n\n")
+                        elif role == "assistant":
+                            content_parts.append(f"Assistant: {content}\n\n")
+                        else:
+                            content_parts.append(f"{role.capitalize()}: {content}\n\n")
+                
+                # Join all parts together
+                if content_parts:
+                    content_to_send = "".join(content_parts)
+                    print(f"[DEBUG] Converted messages to text format for Gemini", file=sys.stderr)
+                    print(f"[DEBUG] First 100 chars: {content_to_send[:100]}{'...' if len(content_to_send) > 100 else ''}", file=sys.stderr)
+            
+            # Check if prompt contains image URLs and remove them for text models
+            if "<|begin_of_img_url|>" in content_to_send and "<|end_of_img_url|>" in content_to_send:
+                print(f"[DEBUG] Found image URL markers in prompt, removing for text model", file=sys.stderr)
+                
+                # For Gemini text models, extract only the text parts
+                sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", content_to_send)
+                # Only keep the text parts
+                filtered_content = ""
+                for i, section in enumerate(sections):
+                    if i % 2 == 0:  # Text section
+                        filtered_content += section
+                
+                content_to_send = filtered_content
+                print(f"[DEBUG] Removed image URLs from prompt for Gemini text model", file=sys.stderr)
+            
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=content_to_send,
+                    config=types.GenerateContentConfig(
+                        temperature=temperature or 1.0,
+                        top_p=top_p or 1.0,
+                        top_k=top_k or 40,
+                        max_output_tokens=max_tokens or 2048,
+                        stop_sequences=stop or [],
+                    )
                 )
-            )
-            
-            print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
-     
-            return {
-                "prompt": {"text": prompt},
-                "completions": [
-                    {
-                        "text": response.text,
-                        "finish_reason": "stop"
+                
+                print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
+         
+                return {
+                    "prompt": {"text": prompt},
+                    "completions": [
+                        {
+                            "text": response.text,
+                            "finish_reason": "stop"
+                        }
+                    ],
+                    "model": model,
+                    "id": str(uuid.uuid4()),
+                    "created": datetime.datetime.now(),
+                    "usage": {
+                        "vendor": vendor,
                     }
-                ],
-                "model": model,
-                "id": str(uuid.uuid4()),
-                "created": datetime.datetime.now(),
-                "usage": {
-                    "vendor": vendor,
                 }
-            }
+            except Exception as e:
+                print(f"[DEBUG] Error generating content: {str(e)}", file=sys.stderr)
+                raise
     else:
         raise NotImplementedError(f"Unknown vendor {vendor}")
 
