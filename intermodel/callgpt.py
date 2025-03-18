@@ -437,7 +437,9 @@ async def complete(
                 return str(obj)
         
         # Pretty print the JSON for readability
-        print(json.dumps(request_payload, indent=2, cls=CustomEncoder), file=sys.stderr)
+        with open("anthropic_request.json", "w") as f:
+            f.write(json.dumps(request_payload, indent=2, cls=CustomEncoder))
+        #print(json.dumps(request_payload, indent=2, cls=CustomEncoder), file=sys.stderr)
 
         if 'thinking' in kwargs:
             response = await client.messages.create(
