@@ -725,11 +725,8 @@ async def complete(
             # Convert messages to format expected by Gemini
             content_to_send = prompt  # Default to using prompt
             
-            # Process message_history_format if no messages provided
-            if messages is None and message_history_format is not None and message_history_format.name == "chat":
-                # Extract messages from message_history_format
-                messages = message_history_format.format_messages(prompt, "user")
-                print(f"[DEBUG] Extracted {len(messages)} messages from chat history format", file=sys.stderr)
+            messages = message_history_format.format_messages(prompt, "user")
+            print(f"[DEBUG] Extracted {len(messages)} messages from chat history format", file=sys.stderr)
             
             if messages is not None:
                 # Gemini doesn't use the role/content format directly
