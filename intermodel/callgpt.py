@@ -701,29 +701,30 @@ async def complete(
                     print(f"[DEBUG] Response: {response}", file=sys.stderr)
                     raise Exception("No candidates returned from Gemini")
                 
-                for part in response.candidates[0].content.parts:
-                    if part.text is not None:
-                        text_content = part.text
-                        print(f"[DEBUG] Received text response: {text_content[:100]}{'...' if len(text_content) > 100 else ''}", file=sys.stderr)
-                    elif part.inline_data is not None:
-                        image_data = part.inline_data.data
-                        image_size = len(image_data) if image_data else 0
-                        print(f"[DEBUG] Received image data: {image_size} bytes", file=sys.stderr)
-                        
-                        # Save image to file for debugging
-                        if image_data:
-                            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                            debug_dir = os.path.join(os.getcwd(), "debug_images")
-                            os.makedirs(debug_dir, exist_ok=True)
-                            image_filename = os.path.join(debug_dir, f"gemini_image_{timestamp}.png")
+                for candidate in response.candidates:
+                    for part in candidate.content.parts:
+                        if part.text is not None:
+                            text_content = part.text
+                            print(f"[DEBUG] Received text response: {text_content[:100]}{'...' if len(text_content) > 100 else ''}", file=sys.stderr)
+                        elif part.inline_data is not None:
+                            image_data = part.inline_data.data
+                            image_size = len(image_data) if image_data else 0
+                            print(f"[DEBUG] Received image data: {image_size} bytes", file=sys.stderr)
                             
-                            try:
-                                with open(image_filename, "wb") as f:
-                                    f.write(image_data)
-                                print(f"[DEBUG] Saved image to: {image_filename}", file=sys.stderr)
-                            except Exception as e:
-                                print(f"[DEBUG] Failed to save image: {str(e)}", file=sys.stderr)
-                
+                            # Save image to file for debugging
+                            if image_data:
+                                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                                debug_dir = os.path.join(os.getcwd(), "debug_images")
+                                os.makedirs(debug_dir, exist_ok=True)
+                                image_filename = os.path.join(debug_dir, f"gemini_image_{timestamp}.png")
+                                
+                                try:
+                                    with open(image_filename, "wb") as f:
+                                        f.write(image_data)
+                                    print(f"[DEBUG] Saved image to: {image_filename}", file=sys.stderr)
+                                except Exception as e:
+                                    print(f"[DEBUG] Failed to save image: {str(e)}", file=sys.stderr)
+                    
                 return {
                     "prompt": {"text": prompt},
                     "completions": [
