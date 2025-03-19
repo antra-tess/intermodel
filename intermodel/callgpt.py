@@ -696,17 +696,21 @@ async def complete(
                 text_content = ""
                 image_data = None
 
+                # iterate through all response fields and print the
+
+
                 if not response.candidates or len(response.candidates) == 0:
                     print(f"[DEBUG] No candidates returned from Gemini", file=sys.stderr)
                     print(f"[DEBUG] Response: {response}", file=sys.stderr)
                     raise Exception("No candidates returned from Gemini")
                 
+
                 for candidate in response.candidates:
                     for part in candidate.content.parts:
                         if part.text is not None:
                             text_content = part.text
                             print(f"[DEBUG] Received text response: {text_content[:100]}{'...' if len(text_content) > 100 else ''}", file=sys.stderr)
-                        elif part.inline_data is not None:
+                        if part.inline_data is not None:
                             image_data = part.inline_data.data
                             image_size = len(image_data) if image_data else 0
                             print(f"[DEBUG] Received image data: {image_size} bytes", file=sys.stderr)
