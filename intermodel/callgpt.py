@@ -189,8 +189,43 @@ async def complete(
                         reasoning_content_key = "reasoning_content"
             # Remove empty logit_bias for NVIDIA endpoints
             api_suffix = "/chat/completions"
-        else:
+        else:                
             api_suffix = "/completions"
+            
+            # Handle message format conversion for chat → completions mode
+            if force_api_mode == "completions" and message_history_format is not None and message_history_format.name == "chat":
+                formatted_messages = []
+                
+                if messages is None:
+                    messages = message_history_format.format_messages(prompt, "user")
+                
+                # Convert messages to a single prompt string
+                for msg in messages:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    
+                    if isinstance(content, list):
+                        # For multi-modal content, just extract text parts
+                        text_parts = []
+                        for item in content:
+                            if item.get("type") == "text":
+                                text_parts.append(item.get("text", ""))
+                        content = " ".join(text_parts)
+                    
+                    # Format based on role
+                    if role == "system":
+                        formatted_messages.append(f"System: {content}")
+                    elif role == "user":
+                        formatted_messages.append(f"User: {content}")
+                    elif role == "assistant":
+                        formatted_messages.append(f"Assistant: {content}")
+                    else:
+                        formatted_messages.append(f"{role.capitalize()}: {content}")
+                
+                # Join all messages with newlines
+                api_arguments["prompt"] = "\n\n".join(formatted_messages)
+                print(f"[DEBUG] Converted chat messages to completions prompt: {len(api_arguments['prompt'])} chars")
+                
         print(f"[DEBUG] Using endpoint: {api_base + api_suffix}")
         if api_suffix == "/chat/completions":
             print(f"[DEBUG] message count: {len(api_arguments['messages'])}")
