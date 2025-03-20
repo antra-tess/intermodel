@@ -189,7 +189,7 @@ async def complete(
             api_suffix = "/completions"
         print(f"[DEBUG] Using endpoint: {api_base + api_suffix}")
         if api_suffix == "/chat/completions":
-        print(f"[DEBUG] message count: {len(api_arguments['messages'])}")
+            print(f"[DEBUG] message count: {len(api_arguments['messages'])}")
 
         async with session.post(
             api_base + api_suffix, headers=headers, json=api_arguments
