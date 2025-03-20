@@ -64,7 +64,7 @@ async def complete(
     logit_bias=None,
     vendor=None,
     vendor_config=None,
-    use_chat_api=False,
+    force_api_mode=None,
     **kwargs,
 ):
     message_history_format = kwargs.get("message_history_format", None)
@@ -125,23 +125,24 @@ async def complete(
             if value is None:
                 del api_arguments[key]
         if (
-            message_history_format is not None
-            and message_history_format.name == "chat"
-            or model.startswith("gpt-3.5")
-            or model.startswith("gpt-4")
-            or model.startswith("o1")
-            or model.startswith("openpipe:")
-            or model.startswith("gpt4")
-            or model.startswith("chatgpt-4o")
-            or model.startswith("grok")
-            or model.startswith("deepseek-reasoner")
-            or model.startswith("deepseek/deepseek-r1")
-            or model.startswith("deepseek-ai/DeepSeek-R1-Zero")
-            or model.startswith("aion")
-            or model.startswith("google/gemma-3-27b-it")
-            or model.startswith("DeepHermes-3-Mistral-24B-Preview")
-            or api_base.startswith("https://integrate.api.nvidia.com")
-            or use_chat_api
+            (force_api_mode is not None and force_api_mode == "chat") or
+            (force_api_mode is None or force_api_mode != "completions") and (
+                (message_history_format is not None and message_history_format.name == "chat") or
+                model.startswith("gpt-3.5") or
+                model.startswith("gpt-4") or
+                model.startswith("o1") or
+                model.startswith("openpipe:") or
+                model.startswith("gpt4") or
+                model.startswith("chatgpt-4o") or
+                model.startswith("grok") or
+                model.startswith("deepseek-reasoner") or
+                model.startswith("deepseek/deepseek-r1") or
+                model.startswith("deepseek-ai/DeepSeek-R1-Zero") or
+                model.startswith("aion") or
+                model.startswith("google/gemma-3-27b-it") or
+                model.startswith("DeepHermes-3-Mistral-24B-Preview") or
+                api_base.startswith("https://integrate.api.nvidia.com")
+            )
         ) and not model.endswith("-base"):
         
             if messages is None:
@@ -152,6 +153,7 @@ async def complete(
                     api_arguments["messages"] = message_history_format.format_messages(
                         api_arguments["prompt"], "user"
                     )
+                    print(f"[DEBUG] used format_messages, message count: {len(api_arguments['messages'])}")
                 else:
                     api_arguments["messages"] = [
                         {
@@ -160,8 +162,10 @@ async def complete(
                         },
                         {"role": "user", "content": api_arguments["prompt"]},
                     ]
+                    print(f"[DEBUG] chat history sent as a single user message")
             else:
                 api_arguments["messages"] = messages
+                print(f"[DEBUG] messages sent as is, message count: {len(api_arguments['messages'])}")
             if "prompt" in api_arguments:
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
