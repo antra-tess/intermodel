@@ -132,6 +132,9 @@ async def complete(
         def is_force_api_mode_completions(mode):
             return mode.lower() == "completions"
                 
+        print(f"[DEBUG] force_api_mode: {force_api_mode}")
+        print(f"[DEBUG] is_force_api_mode_chat(force_api_mode): {is_force_api_mode_chat(force_api_mode)}")
+        print(f"[DEBUG] is_force_api_mode_completions(force_api_mode): {is_force_api_mode_completions(force_api_mode)}")
         if (
             is_force_api_mode_chat(force_api_mode) or
             (not is_force_api_mode_completions(force_api_mode)) and (
