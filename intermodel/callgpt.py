@@ -64,6 +64,7 @@ async def complete(
     logit_bias=None,
     vendor=None,
     vendor_config=None,
+    use_chat_api=False,
     **kwargs,
 ):
     message_history_format = kwargs.get("message_history_format", None)
@@ -140,6 +141,7 @@ async def complete(
             or model.startswith("google/gemma-3-27b-it")
             or model.startswith("DeepHermes-3-Mistral-24B-Preview")
             or api_base.startswith("https://integrate.api.nvidia.com")
+            or use_chat_api
         ) and not model.endswith("-base"):
             if messages is None:
                 if (
