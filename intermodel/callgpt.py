@@ -143,6 +143,7 @@ async def complete(
             or api_base.startswith("https://integrate.api.nvidia.com")
             or use_chat_api
         ) and not model.endswith("-base"):
+        
             if messages is None:
                 if (
                     message_history_format is not None
@@ -186,6 +187,9 @@ async def complete(
             api_suffix = "/chat/completions"
         else:
             api_suffix = "/completions"
+        print(f"[DEBUG] Using endpoint: {api_base + api_suffix}")
+        if api_suffix == "/chat/completions":
+        print(f"[DEBUG] message count: {len(api_arguments['messages'])}")
 
         async with session.post(
             api_base + api_suffix, headers=headers, json=api_arguments
