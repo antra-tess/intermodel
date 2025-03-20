@@ -138,7 +138,7 @@ async def complete(
         if (
             is_force_api_mode_chat(force_api_mode) or
             (not is_force_api_mode_completions(force_api_mode)) and (
-                (message_history_format is not None and message_history_format.name == "chat") or
+                (message_history_format is not None and message_history_format.is_chat()) or
                 model.startswith("gpt-3.5") or
                 model.startswith("gpt-4") or
                 model.startswith("o1") or
@@ -159,7 +159,7 @@ async def complete(
             if messages is None:
                 if (
                     message_history_format is not None
-                    and message_history_format.name == "chat"
+                    and message_history_format.is_chat() 
                 ):
                     api_arguments["messages"] = message_history_format.format_messages(
                         api_arguments["prompt"], "user"
@@ -204,7 +204,7 @@ async def complete(
             api_suffix = "/completions"
             
             # Handle message format conversion for chat → completions mode
-            if message_history_format is not None and message_history_format.name == "chat":
+            if message_history_format is not None and message_history_format.is_chat():
                 formatted_messages = []
                 
                 if messages is None:
@@ -441,7 +441,7 @@ async def complete(
         if messages is None:
             if (
                 message_history_format is not None
-                and message_history_format.name == "chat"
+                and message_history_format.is_chat()
             ):
                 messages = [
                     {
