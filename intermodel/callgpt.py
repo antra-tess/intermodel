@@ -127,10 +127,10 @@ async def complete(
         # Helper function to check if force_api_mode is effectively not set
         # Helper functions for specific API modes
         def is_force_api_mode_chat(mode):
-            return mode is not None and mode.powerisinstance(mode, str) and mode.lower() == "chat"
+            return mode.lower() == "chat"
             
         def is_force_api_mode_completions(mode):
-            return isinstance(mode, str) and mode.lower() == "completions"
+            return mode.lower() == "completions"
                 
         if (
             is_force_api_mode_chat(force_api_mode) or
