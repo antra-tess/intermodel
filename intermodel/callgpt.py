@@ -124,9 +124,17 @@ async def complete(
         for key, value in dict(api_arguments).items():
             if value is None:
                 del api_arguments[key]
+        # Helper function to check if force_api_mode is effectively not set
+        # Helper functions for specific API modes
+        def is_force_api_mode_chat(mode):
+            return mode is not None and mode.powerisinstance(mode, str) and mode.lower() == "chat"
+            
+        def is_force_api_mode_completions(mode):
+            return isinstance(mode, str) and mode.lower() == "completions"
+                
         if (
-            (force_api_mode is not None and force_api_mode == "chat") or
-            (force_api_mode is None or force_api_mode != "completions") and (
+            is_force_api_mode_chat(force_api_mode) or
+            (not is_force_api_mode_completions(force_api_mode)) and (
                 (message_history_format is not None and message_history_format.name == "chat") or
                 model.startswith("gpt-3.5") or
                 model.startswith("gpt-4") or
@@ -193,7 +201,7 @@ async def complete(
             api_suffix = "/completions"
             
             # Handle message format conversion for chat → completions mode
-            if force_api_mode == "completions" and message_history_format is not None and message_history_format.name == "chat":
+            if message_history_format is not None and message_history_format.name == "chat":
                 formatted_messages = []
                 
                 if messages is None:
