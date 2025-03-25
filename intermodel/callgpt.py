@@ -866,6 +866,7 @@ async def complete(
                    print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
                 else:
                     print(f"[DEBUG] Received response with no text: {response}", file=sys.stderr)
+                    raise Exception("No text returned from Gemini: " + str(response))
          
 
                 return {
