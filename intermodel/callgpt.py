@@ -684,6 +684,11 @@ async def complete(
                                     or "image/jpeg"
                                 )
                                 
+                                # Skip GIFs for Gemini models
+                                if mime_type.lower() == "image/gif":
+                                    print(f"[DEBUG] Skipping GIF image as it's not supported by Gemini", file=sys.stderr)
+                                    continue
+                                
                                 # Create a Part object with the image for Gemini
                                 image_part = types.Part(
                                     inline_data=types.Blob(
@@ -865,9 +870,13 @@ async def complete(
         raise NotImplementedError(f"Unknown vendor {vendor}")
 
 
-def download_and_encode_image(url):
-    """Download image and convert to base64."""
-
+def download_and_encode_image(url, skip_gifs=False):
+    """Download image and convert to base64.
+    
+    Args:
+        url (str): URL of the image to download
+        skip_gifs (bool): If True, skip GIF images (for Gemini models)
+    """
     import base64
     import requests
     from mimetypes import guess_type
@@ -882,11 +891,17 @@ def download_and_encode_image(url):
         or guess_type(url)[0]
         or "application/octet-stream"
     )
+    
+    # Skip GIFs if requested (for Gemini models)
+    if skip_gifs and mime_type.lower() == "image/gif":
+        print(f"[DEBUG] Skipping GIF image as it's not supported", file=sys.stderr)
+        return None, None
+        
     print(f"[DEBUG] Downloaded image: {len(image_data)} bytes, mime type: {mime_type}", file=sys.stderr)
     return base64.b64encode(image_data).decode(), mime_type
 
 
-def process_image_message(content_string):
+def process_image_message(content_string, skip_gifs=False):
     import requests
     import sys
 
@@ -903,7 +918,10 @@ def process_image_message(content_string):
         else:
             try:
                 print(f"[DEBUG] Processing image URL: {section[:100]}{'...' if len(section) > 100 else ''}", file=sys.stderr)
-                base64_data, mime_type = download_and_encode_image(section)
+                result = download_and_encode_image(section, skip_gifs=skip_gifs)
+                if result[0] is None:  # Skip if image was filtered out
+                    continue
+                base64_data, mime_type = result
                 content.append(
                     {
                         "type": "image",
@@ -921,13 +939,14 @@ def process_image_message(content_string):
     return content
 
 
-def process_image_messages(prompt: str, prompt_role: str = "user", max_images: int = 10) -> list:
+def process_image_messages(prompt: str, prompt_role: str = "user", max_images: int = 10, skip_gifs: bool = False) -> list:
     """Convert a prompt containing image URLs into a messages array.
 
     Args:
         prompt (str): The input prompt text with image URL markers
         prompt_role (str): The role to use for text messages (default: "user")
         max_images (int): Maximum number of images to process (default: 10)
+        skip_gifs (bool): If True, skip GIF images (for Gemini models)
 
     Returns:
         list: Array of message objects with text and images
@@ -958,7 +977,10 @@ def process_image_messages(prompt: str, prompt_role: str = "user", max_images: i
             if total_images - image_counter < images_to_process:
                 try:
                     print(f"[DEBUG] Processing image URL: {section[:100]}{'...' if len(section) > 100 else ''}", file=sys.stderr)
-                    base64_data, mime_type = download_and_encode_image(section)
+                    result = download_and_encode_image(section, skip_gifs=skip_gifs)
+                    if result[0] is None:  # Skip if image was filtered out
+                        continue
+                    base64_data, mime_type = result
                     image_content = {
                         "type": "image",
                         "source": {
