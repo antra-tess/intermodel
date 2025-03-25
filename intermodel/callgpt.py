@@ -717,6 +717,26 @@ async def complete(
             
         print(f"[DEBUG] Sending request with {len(gemini_contents)} content parts", file=sys.stderr)
         
+        # Debug log last three messages
+        print("[DEBUG] Last three messages being sent:", file=sys.stderr)
+        for i, content in enumerate(gemini_contents[-3:]):
+            if isinstance(content, str):
+                if len(content) > 300:
+                    print(f"[DEBUG] Message {i+1}: {content[:150]}...{content[-150:]}", file=sys.stderr)
+                else:
+                    print(f"[DEBUG] Message {i+1}: {content}", file=sys.stderr)
+            else:
+                # For image parts, create a shortened version
+                shortened_content = {
+                    "type": "image",
+                    "inline_data": {
+                        "mime_type": content.inline_data.mime_type,
+                        "data_length": len(content.inline_data.data),
+                        "data_preview": content.inline_data.data[:50].hex() + "..." if len(content.inline_data.data) > 50 else content.inline_data.data.hex()
+                    }
+                }
+                print(f"[DEBUG] Message {i+1}: {json.dumps(shortened_content, indent=2)}", file=sys.stderr)
+        
         # Configure the request based on the model type
         is_image_generation = model == "gemini-2.0-flash-exp-image-generation"
         
