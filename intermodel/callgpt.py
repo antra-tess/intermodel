@@ -836,9 +836,13 @@ async def complete(
                         ]
                     )
                 )
-                
-                print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
+
+                if 'text' in response:
+                   print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
+                else:
+                    print(f"[DEBUG] Received response with no text: {response}", file=sys.stderr)
          
+
                 return {
                     "prompt": {"text": prompt},
                     "completions": [
