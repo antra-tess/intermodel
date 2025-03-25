@@ -605,7 +605,7 @@ async def complete(
         client = genai.Client(api_key=kwargs["google_api_key"])
         
         print(f"[DEBUG] Sending request to Gemini model: {model}", file=sys.stderr)
-        print(f"[DEBUG] Content to send: {prompt[:100]}{'...' if len(prompt) > 100 else ''}", file=sys.stderr)
+        print(f"[DEBUG] Content to send: {prompt[:150]}{'...' if len(prompt) > 300 else ''}{prompt[-150:] if len(prompt) > 300 else ''}", file=sys.stderr)
         
         # Convert messages to format expected by Gemini for both text and image models
         messages = message_history_format.format_messages(prompt, "user")
