@@ -30,6 +30,11 @@ from dotenv import load_dotenv
 
 from intermodel.hf_token import get_hf_tokenizer, get_hf_auth_token
 
+try:
+    from grok_client import GrokClient
+except ImportError:
+    GrokClient = None
+
 load_dotenv()
 
 MODEL_ALIASES = {}
@@ -857,6 +862,65 @@ async def complete(
         except Exception as e:
             print(f"[DEBUG] Error generating content: {str(e)}", file=sys.stderr)
             raise
+    elif vendor == "grok-api":
+        print(f"[DEBUG] Using direct Grok API integration", file=sys.stderr)
+        
+        if GrokClient is None:
+            raise ImportError("grok_client not installed. Please install it to use the Grok API.")
+        
+        # Extract Grok cookie values from kwargs or environment variables
+        cookies = {}
+        cookie_keys = ["x-anonuserid", "x-challenge", "x-signature", "sso", "sso-rw"]
+        
+        # Try to get cookies from kwargs
+        for key in cookie_keys:
+            env_key = f"GROK_{key.replace('-', '_').upper()}"
+            if key in kwargs:
+                cookies[key] = kwargs[key]
+            elif env_key in os.environ:
+                cookies[key] = os.environ[env_key]
+        
+        # Check if we have all required cookies
+        if not all(key in cookies for key in cookie_keys):
+            missing_keys = [key for key in cookie_keys if key not in cookies]
+            raise ValueError(f"Missing required Grok API cookies: {', '.join(missing_keys)}")
+        
+        # Initialize the Grok client
+        client = GrokClient(cookies)
+        
+        # Process messages for Grok
+        final_prompt = prompt
+        if messages is not None:
+            # Grok expects a single message, so we concatenate them
+            # A more sophisticated approach could be implemented if needed
+            final_prompt = "\n".join([f"{msg['role']}: {msg['content']}" for msg in messages])
+        
+        print(f"[DEBUG] Sending request to Grok API with prompt: {final_prompt[:100]}{'...' if len(final_prompt) > 100 else ''}", file=sys.stderr)
+        
+        # Send message to Grok
+        try:
+            response = client.send_message(final_prompt)
+            
+            print(f"[DEBUG] Received response from Grok API: {response[:100]}{'...' if len(response) > 100 else ''}", file=sys.stderr)
+            
+            return {
+                "prompt": {"text": prompt if prompt is not None else final_prompt},
+                "completions": [
+                    {
+                        "text": response,
+                        "finish_reason": {"reason": "stop"}
+                    }
+                ],
+                "model": model,
+                "id": str(uuid.uuid4()),
+                "created": datetime.datetime.now().timestamp(),
+                "usage": {
+                    "vendor": vendor,
+                }
+            }
+        except Exception as e:
+            print(f"[DEBUG] Error from Grok API: {str(e)}", file=sys.stderr)
+            raise
     else:
         raise NotImplementedError(f"Unknown vendor {vendor}")
 
@@ -1161,6 +1225,8 @@ def pick_vendor(model, custom_config=None):
         return "openai"  # Google models go through OpenRouter
     elif model.startswith("gemini-"):
         return "gemini"  # Gemini models go directly
+    elif model.startswith("grok-") or model == "grok" or model.startswith("x-grok-"):
+        return "grok-api"  # Direct Grok API integration
     elif "/" in model:
         return "huggingface"
     else:
@@ -1187,8 +1253,8 @@ def max_token_length_inner(model):
         return 8193
     elif model.startswith("chatgpt-4o"):
         return 128_000
-    elif model.startswith("grok"):
-        return 128_000
+    elif model.startswith("grok") or model == "grok" or model.startswith("x-grok-"):
+        return 128_000  # Grok claims to have a 128k context window
     elif model.startswith("aion"):
         return 30_000  # 32k context window
     elif model == "code-davinci-002":
