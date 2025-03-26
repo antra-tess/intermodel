@@ -735,6 +735,19 @@ async def complete(
         
         try:
             if is_image_generation:
+                # Create request data dictionary for logging
+                request_data = {
+                    "model": model,
+                    "contents": gemini_contents,
+                    "config": {
+                        "response_modalities": ['Text', 'Image'],
+                        "safety_settings": "BLOCK_NONE for all categories"
+                    }
+                }
+                
+                # Log the request
+                request_log_file = _log_gemini_request(request_data)
+                
                 # For image generation models
                 response = client.models.generate_content(
                     model=model,
@@ -765,6 +778,9 @@ async def complete(
                         ]
                     )
                 )
+                
+                # Log the response
+                _log_gemini_response(response, request_log_file)
                 
                 # Process the response for image generation
                 text_content = ""
@@ -820,6 +836,23 @@ async def complete(
                     }
                 }
             else:
+                # Create request data dictionary for logging
+                request_data = {
+                    "model": model,
+                    "contents": gemini_contents,
+                    "config": {
+                        "temperature": temperature or 1.0,
+                        "top_p": top_p or 1.0,
+                        "top_k": top_k or 40,
+                        "max_output_tokens": max_tokens or 2048,
+                        "stop_sequences": stop or [],
+                        "safety_settings": "BLOCK_NONE for all categories"
+                    }
+                }
+                
+                # Log the request
+                request_log_file = _log_gemini_request(request_data)
+                
                 # For regular text models
                 response = client.models.generate_content(
                     model=model,
@@ -854,6 +887,9 @@ async def complete(
                         ]
                     )
                 )
+                
+                # Log the response
+                _log_gemini_response(response, request_log_file)
 
                 if response.text:
                    print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
@@ -1378,6 +1414,177 @@ def _log_error(info: dict):
     with open(filename, "w") as f:
         json.dump(info, f, indent=2)
     print(f"\nError details written to: {filename}")
+
+
+def _log_gemini_request(request_data):
+    """Log Gemini request data to a JSON file.
+    
+    Args:
+        request_data (dict): The request data to log
+    """
+    import json
+    import os
+    import datetime
+    import glob
+    
+    # Create gemini directory if it doesn't exist
+    log_dir = os.path.join(os.getcwd(), "gemini")
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Find highest existing log number
+    existing_logs = glob.glob(os.path.join(log_dir, "gemini_request_*.json"))
+    if existing_logs:
+        last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
+        next_num = last_num + 1
+    else:
+        next_num = 1
+        
+    # Generate filename with timestamp and incrementing number
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = os.path.join(log_dir, f"gemini_request_{next_num:04d}_{timestamp}.json")
+    
+    # Process content to preserve text but shorten image data
+    processed_data = {}
+    
+    # Deep copy dictionary with special handling for content objects
+    def process_content(content_list):
+        processed_contents = []
+        for content in content_list:
+            processed_content = {"role": content.role, "parts": []}
+            
+            for part in content.parts:
+                if part.text is not None:
+                    # Include full text
+                    processed_content["parts"].append({"type": "text", "text": part.text})
+                elif part.inline_data is not None:
+                    # Shorten image data but keep metadata
+                    processed_content["parts"].append({
+                        "type": "inline_data",
+                        "mime_type": part.inline_data.mime_type,
+                        "data_size_bytes": len(part.inline_data.data),
+                        "data_preview": "(binary data, truncated)" 
+                    })
+            
+            processed_contents.append(processed_content)
+        return processed_contents
+    
+    # Process main request data
+    if "model" in request_data:
+        processed_data["model"] = request_data["model"]
+    
+    if "contents" in request_data:
+        processed_data["contents"] = process_content(request_data["contents"])
+    
+    if "config" in request_data:
+        # Convert config to dict with special handling for nested objects
+        config_dict = {}
+        if hasattr(request_data["config"], "temperature"):
+            config_dict["temperature"] = request_data["config"].temperature
+        if hasattr(request_data["config"], "top_p"):
+            config_dict["top_p"] = request_data["config"].top_p
+        if hasattr(request_data["config"], "top_k"):
+            config_dict["top_k"] = request_data["config"].top_k
+        if hasattr(request_data["config"], "max_output_tokens"):
+            config_dict["max_output_tokens"] = request_data["config"].max_output_tokens
+        if hasattr(request_data["config"], "stop_sequences"):
+            config_dict["stop_sequences"] = request_data["config"].stop_sequences
+        
+        processed_data["config"] = config_dict
+    
+    # Write to file
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(processed_data, f, indent=2, ensure_ascii=False)
+        
+    print(f"[DEBUG] Logged Gemini request to {filename}", file=sys.stderr)
+    return filename
+
+
+def _log_gemini_response(response, request_log_file=None):
+    """Log Gemini response data to a JSON file.
+    
+    Args:
+        response: The Gemini API response to log
+        request_log_file: Optional path to the corresponding request log file
+    """
+    import json
+    import os
+    import datetime
+    import glob
+    
+    # Create gemini directory if it doesn't exist
+    log_dir = os.path.join(os.getcwd(), "gemini")
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Generate filename with timestamp and matching request number if available
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if request_log_file:
+        # Extract the request number to maintain relationship
+        basename = os.path.basename(request_log_file)
+        request_num = basename.split('_')[2]
+        filename = os.path.join(log_dir, f"gemini_response_{request_num}_{timestamp}.json")
+    else:
+        # Find highest existing log number if no request file
+        existing_logs = glob.glob(os.path.join(log_dir, "gemini_response_*.json"))
+        if existing_logs:
+            last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
+            next_num = last_num + 1
+        else:
+            next_num = 1
+        filename = os.path.join(log_dir, f"gemini_response_{next_num:04d}_{timestamp}.json")
+    
+    # Process response to a serializable format
+    processed_data = {}
+    
+    # Check if response has candidates
+    if hasattr(response, "candidates") and response.candidates:
+        processed_data["candidates"] = []
+        
+        for candidate in response.candidates:
+            candidate_data = {}
+            
+            if hasattr(candidate, "content") and candidate.content:
+                content_data = {"parts": []}
+                
+                # Get role if available
+                if hasattr(candidate.content, "role"):
+                    content_data["role"] = candidate.content.role
+                
+                # Process the parts
+                if hasattr(candidate.content, "parts"):
+                    for part in candidate.content.parts:
+                        part_data = {}
+                        
+                        if hasattr(part, "text") and part.text is not None:
+                            part_data["type"] = "text"
+                            part_data["text"] = part.text
+                        elif hasattr(part, "inline_data") and part.inline_data is not None:
+                            part_data["type"] = "inline_data"
+                            part_data["mime_type"] = part.inline_data.mime_type
+                            part_data["data_size_bytes"] = len(part.inline_data.data)
+                            part_data["data_preview"] = "(binary data, truncated)"
+                        
+                        if part_data:
+                            content_data["parts"].append(part_data)
+                
+                candidate_data["content"] = content_data
+            
+            # Add finish reason if available
+            if hasattr(candidate, "finish_reason"):
+                candidate_data["finish_reason"] = candidate.finish_reason
+                
+            processed_data["candidates"].append(candidate_data)
+    
+    # Add simple text response if present
+    if hasattr(response, "text"):
+        processed_data["text"] = response.text
+    
+    # Write to file
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(processed_data, f, indent=2, ensure_ascii=False)
+        
+    print(f"[DEBUG] Logged Gemini response to {filename}", file=sys.stderr)
+    return filename
 
 
 if __name__ == "__main__":
