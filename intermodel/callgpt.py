@@ -446,7 +446,7 @@ async def complete(
                 messages = [
                     {
                         "role": message["role"],
-                        "content": process_image_message(message["content"]),
+                        "content": process_image_message(message["content"], role=message["role"]).get("content"),
                     }
                     for message in message_history_format.format_messages(
                         prompt, "user"
@@ -621,6 +621,9 @@ async def complete(
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
                 
+                # Create a content object with parts for each message
+                content_parts = []
+                
                 # Handle string content
                 if isinstance(content, str):
                     # Check if this message contains image URLs
@@ -654,19 +657,9 @@ async def complete(
                         # Combine text parts into a single prompt for this message
                         text_prompt = " ".join(text_parts)
                         
-                        # Create a message with text and images
-                        if role == "system":
-                            prefix = "System: "
-                        elif role == "user":
-                            prefix = "User: "
-                        elif role == "assistant":
-                            prefix = "Assistant: "
-                        else:
-                            prefix = f"{role.capitalize()}: "
-                        
-                        # Add text part first
+                        # Add text part first if it exists
                         if text_prompt:
-                            gemini_contents.append(prefix + text_prompt)
+                            content_parts.append(types.Part(text=text_prompt))
                         
                         # Then add the image parts
                         for url in image_urls:
@@ -696,46 +689,46 @@ async def complete(
                                         data=image_data
                                     )
                                 )
-                                gemini_contents.append(image_part)
+                                content_parts.append(image_part)
                                 print(f"[DEBUG] Added image to message ({len(image_data)} bytes)", file=sys.stderr)
                             except Exception as e:
                                 print(f"[DEBUG] Failed to process image: {str(e)}", file=sys.stderr)
                                 continue
                     else:
                         # No images, just text
-                        if role == "system":
-                            gemini_contents.append(f"System: {content}")
-                        elif role == "user":
-                            gemini_contents.append(f"User: {content}")
-                        elif role == "assistant":
-                            gemini_contents.append(f"Assistant: {content}")
-                        else:
-                            gemini_contents.append(f"{role.capitalize()}: {content}")
+                        content_parts.append(types.Part(text=content))
+                
+                # Create a Content object with the parts and role
+                if content_parts:
+                    # Map roles to Gemini's expected format (only 'user' or 'model')
+                    gemini_role = role
+                    if role == 'assistant':
+                        gemini_role = 'model'
+                    elif role not in ['user', 'model']:
+                        # Treat system and any other roles as user by default
+                        gemini_role = 'user'
+                    
+                    gemini_contents.append(types.Content(parts=content_parts, role=gemini_role))
         else:
             # If no messages format was provided, use the prompt directly
-            gemini_contents = [prompt]
+            gemini_contents = [types.Content(parts=[types.Part(text=prompt)], role="user")]
             
-        print(f"[DEBUG] Sending request with {len(gemini_contents)} content parts", file=sys.stderr)
+        print(f"[DEBUG] Sending request with {len(gemini_contents)} content objects", file=sys.stderr)
         
         # Debug log last three messages
         print("[DEBUG] Last three messages being sent:", file=sys.stderr)
         for i, content in enumerate(gemini_contents[-3:]):
-            if isinstance(content, str):
-                if len(content) > 300:
-                    print(f"[DEBUG] Message {i+1}: {content[:150]}...{content[-150:]}", file=sys.stderr)
-                else:
-                    print(f"[DEBUG] Message {i+1}: {content}", file=sys.stderr)
-            else:
-                # For image parts, create a shortened version
-                shortened_content = {
-                    "type": "image",
-                    "inline_data": {
-                        "mime_type": content.inline_data.mime_type,
-                        "data_length": len(content.inline_data.data),
-                        "data_preview": content.inline_data.data[:50].hex() + "..." if len(content.inline_data.data) > 50 else content.inline_data.data.hex()
-                    }
-                }
-                print(f"[DEBUG] Message {i+1}: {json.dumps(shortened_content, indent=2)}", file=sys.stderr)
+            parts_info = []
+            for part in content.parts:
+                if part.text is not None:
+                    if len(part.text) > 300:
+                        parts_info.append(f"Text: '{part.text[:150]}...{part.text[-150:]}'")
+                    else:
+                        parts_info.append(f"Text: '{part.text}'")
+                elif part.inline_data is not None:
+                    parts_info.append(f"Image: {len(part.inline_data.data)} bytes, type: {part.inline_data.mime_type}")
+            
+            print(f"[DEBUG] Message {i+1}: Role={content.role}, Parts={parts_info}", file=sys.stderr)
         
         # Configure the request based on the model type
         is_image_generation = model == "gemini-2.0-flash-exp-image-generation"
@@ -922,9 +915,21 @@ def download_and_encode_image(url, skip_gifs=False):
     return base64.b64encode(image_data).decode(), mime_type
 
 
-def process_image_message(content_string, skip_gifs=False):
+def process_image_message(content_string, skip_gifs=False, role="user"):
+    """Process a message that may contain image URLs markers.
+    
+    Args:
+        content_string (str): The message content that may contain image URL markers
+        skip_gifs (bool): Whether to skip GIF images
+        role (str): The role of the message sender ('user', 'system', 'assistant', etc.)
+        
+    Returns:
+        list: A list of content parts (text and images)
+    """
     import requests
     import sys
+    import base64
+    from google.genai import types
 
     sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", content_string)
     if len(sections) == 1:
@@ -957,7 +962,15 @@ def process_image_message(content_string, skip_gifs=False):
             except requests.RequestException as e:
                 print(f"[DEBUG] Failed to download image: {str(e)}", file=sys.stderr)
                 continue
-    return content
+    
+    # Add role information for future compatibility with Gemini format
+    gemini_role = role
+    if role == 'assistant':
+        gemini_role = 'model'
+    elif role not in ['user', 'model']:
+        gemini_role = 'user'
+    
+    return {"role": gemini_role, "content": content}
 
 
 def process_image_messages(prompt: str, prompt_role: str = "user", max_images: int = 10, skip_gifs: bool = False) -> list:
@@ -974,6 +987,8 @@ def process_image_messages(prompt: str, prompt_role: str = "user", max_images: i
     """
     import requests
     import sys
+    import base64
+    from google.genai import types
 
     print(f"[DEBUG] Processing image messages with role: {prompt_role}", file=sys.stderr)
     
@@ -987,12 +1002,13 @@ def process_image_messages(prompt: str, prompt_role: str = "user", max_images: i
     print(f"[DEBUG] Found {total_images} images, will process {images_to_process} (max limit: {max_images})", file=sys.stderr)
     
     image_counter = 0
-
+    current_msg_parts = []
+    
     # Process each section
     for i, section in enumerate(sections):
         if i % 2 == 0:  # Text section
             if section.strip():
-                messages.append({"role": prompt_role, "content": section})
+                current_msg_parts.append(types.Part(text=section.strip()))
         else:  # Image URL section
             image_counter += 1
             if total_images - image_counter < images_to_process:
@@ -1002,37 +1018,34 @@ def process_image_messages(prompt: str, prompt_role: str = "user", max_images: i
                     if result[0] is None:  # Skip if image was filtered out
                         continue
                     base64_data, mime_type = result
-                    image_content = {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": mime_type,
-                            "data": base64_data,
-                        },
-                    }
-
-                    # Add to last message if it exists, otherwise create new
-                    if messages and messages[-1]["role"] == "user":
-                        if isinstance(messages[-1]["content"], list):
-                            messages[-1]["content"].append(image_content)
-                        else:
-                            messages[-1]["content"] = [
-                                {"type": "text", "text": messages[-1]["content"]},
-                                image_content,
-                            ]
-                    else:
-                        messages.append({"role": "user", "content": [image_content]})
-                    print(f"[DEBUG] Added image to messages array", file=sys.stderr)
+                    image_part = types.Part(
+                        inline_data=types.Blob(
+                            mime_type=mime_type,
+                            data=base64.b64decode(base64_data)
+                        )
+                    )
+                    current_msg_parts.append(image_part)
+                    print(f"[DEBUG] Added image to message parts", file=sys.stderr)
                 except requests.RequestException as e:
                     print(f"[DEBUG] Failed to download image: {str(e)}", file=sys.stderr)
                     continue  # Skip failed image downloads
             else:
-                # Keep URL markers for images beyond processing limit
-                url_text = f"<|begin_of_img_url|>{section}<|end_of_img_url|>"
-                if messages and messages[-1]["role"] == prompt_role:
-                    messages[-1]["content"] += url_text
-                else:
-                    messages.append({"role": prompt_role, "content": url_text})
+                # For images beyond the processing limit, add a text note
+                url_note = f"[Image URL (exceeding limit): {section[:30]}...]"
+                current_msg_parts.append(types.Part(text=url_note))
+                print(f"[DEBUG] Skipped processing image due to limit: {section[:50]}...", file=sys.stderr)
+    
+    # Create a Content object with all parts
+    if current_msg_parts:
+        # Map roles to Gemini's expected format (only 'user' or 'model')
+        gemini_role = prompt_role
+        if prompt_role == 'assistant':
+            gemini_role = 'model'
+        elif prompt_role not in ['user', 'model']:
+            # Treat system and any other roles as user by default
+            gemini_role = 'user'
+            
+        messages.append(types.Content(parts=current_msg_parts, role=gemini_role))
 
     print(f"[DEBUG] Finished processing image messages, created {len(messages)} messages", file=sys.stderr)
     return messages
