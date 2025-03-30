@@ -1144,20 +1144,41 @@ def process_image_messages(
     processed_messages = []
     sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
     
-    current_msg_parts = []
+    # Extract text parts and image URLs
+    text_parts = []
+    image_urls = []
+    
     for i, section in enumerate(sections):
         if i % 2 == 0 and section.strip():
-            current_msg_parts.append(MessagePart(
-                type="text",
-                content=section.strip()
-            ))
+            text_parts.append(section.strip())
         elif i % 2 == 1:  # Image URL
-            # Process image URL...
-            current_msg_parts.append(MessagePart(
-                type="image",
-                content=section.strip(),
-                mime_type=guess_mime_type(section.strip())
-            ))
+            image_urls.append(section.strip())
+    
+    # Respect max_images parameter
+    if max_images == 0:
+        # If max_images is 0, don't process any images
+        image_urls = []
+    elif max_images < len(image_urls):
+        # Only keep the last max_images images
+        image_urls = image_urls[-max_images:]
+    
+    # Create message parts
+    current_msg_parts = []
+    
+    # Add text parts
+    for text in text_parts:
+        current_msg_parts.append(MessagePart(
+            type="text",
+            content=text
+        ))
+    
+    # Add image parts
+    for url in image_urls:
+        current_msg_parts.append(MessagePart(
+            type="image",
+            content=url,
+            mime_type=guess_mime_type(url)
+        ))
     
     if current_msg_parts:
         processed_messages.append(ProcessedMessage(
