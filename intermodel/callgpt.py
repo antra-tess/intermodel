@@ -37,6 +37,95 @@ untokenizable = set()
 
 session: Optional[aiohttp.ClientSession] = None
 
+@dataclasses.dataclass
+class MessagePart:
+    type: str  # "text" or "image"
+    content: str  # text content or image URL
+    mime_type: Optional[str] = None  # for images
+
+@dataclasses.dataclass
+class ProcessedMessage:
+    role: str
+    parts: List[MessagePart]
+
+def convert_to_openai_format(processed_msg: ProcessedMessage) -> dict:
+    content = []
+    for part in processed_msg.parts:
+        if part.type == "text":
+            content.append({"type": "text", "text": part.content})
+        elif part.type == "image":
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": part.content}
+            })
+    return {"role": processed_msg.role, "content": content}
+
+def convert_to_gemini_format(processed_msg: ProcessedMessage) -> "types.Content":
+    from google.genai import types
+    parts = []
+    for part in processed_msg.parts:
+        if part.type == "text":
+            parts.append(types.Part(text=part.content))
+        elif part.type == "image":
+            # Handle image conversion for Gemini
+            parts.append(types.Part(
+                inline_data=types.Blob(
+                    mime_type=part.mime_type,
+                    data=download_and_process_image(part.content)
+                )
+            ))
+    return types.Content(parts=parts, role=processed_msg.role)
+
+def convert_to_anthropic_format(processed_msg: ProcessedMessage) -> dict:
+    """Convert the intermediate message format to Anthropic's API format.
+    
+    Args:
+        processed_msg: A ProcessedMessage object containing text and/or images
+        
+    Returns:
+        dict: Message formatted for Anthropic's API
+    
+    Notes:
+        - Anthropic supports both URL and base64-encoded images
+        - Images must be JPEG, PNG, GIF, or WebP format
+        - Maximum 100 images per API request
+        - Maximum 5MB per image
+        - If image is larger than 8000x8000px (or 2000x2000px for >20 images), it will be rejected
+    """
+    content = []
+    
+    for part in processed_msg.parts:
+        if part.type == "text":
+            content.append({
+                "type": "text",
+                "text": part.content
+            })
+        elif part.type == "image":
+            # For URLs, use the URL source type
+            if part.content.startswith(('http://', 'https://')):
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "url",
+                        "url": part.content
+                    }
+                })
+            else:
+                # For base64 data, include the mime type
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": part.mime_type or "image/jpeg",  # Default to JPEG if not specified
+                        "data": part.content
+                    }
+                })
+    
+    return {
+        "role": "user" if processed_msg.role in ["user", "system"] else "assistant",
+        "content": content
+    }
+
 
 @tenacity.retry(
     retry=tenacity.retry_if_exception(
@@ -1569,91 +1658,3 @@ def _log_gemini_response(response, request_log_file=None):
 if __name__ == "__main__":
     InteractiveIntermodel().cmdloop()
 
-@dataclasses.dataclass
-class MessagePart:
-    type: str  # "text" or "image"
-    content: str  # text content or image URL
-    mime_type: Optional[str] = None  # for images
-
-@dataclasses.dataclass
-class ProcessedMessage:
-    role: str
-    parts: List[MessagePart]
-
-def convert_to_openai_format(processed_msg: ProcessedMessage) -> dict:
-    content = []
-    for part in processed_msg.parts:
-        if part.type == "text":
-            content.append({"type": "text", "text": part.content})
-        elif part.type == "image":
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": part.content}
-            })
-    return {"role": processed_msg.role, "content": content}
-
-def convert_to_gemini_format(processed_msg: ProcessedMessage) -> "types.Content":
-    from google.genai import types
-    parts = []
-    for part in processed_msg.parts:
-        if part.type == "text":
-            parts.append(types.Part(text=part.content))
-        elif part.type == "image":
-            # Handle image conversion for Gemini
-            parts.append(types.Part(
-                inline_data=types.Blob(
-                    mime_type=part.mime_type,
-                    data=download_and_process_image(part.content)
-                )
-            ))
-    return types.Content(parts=parts, role=processed_msg.role)
-
-def convert_to_anthropic_format(processed_msg: ProcessedMessage) -> dict:
-    """Convert the intermediate message format to Anthropic's API format.
-    
-    Args:
-        processed_msg: A ProcessedMessage object containing text and/or images
-        
-    Returns:
-        dict: Message formatted for Anthropic's API
-    
-    Notes:
-        - Anthropic supports both URL and base64-encoded images
-        - Images must be JPEG, PNG, GIF, or WebP format
-        - Maximum 100 images per API request
-        - Maximum 5MB per image
-        - If image is larger than 8000x8000px (or 2000x2000px for >20 images), it will be rejected
-    """
-    content = []
-    
-    for part in processed_msg.parts:
-        if part.type == "text":
-            content.append({
-                "type": "text",
-                "text": part.content
-            })
-        elif part.type == "image":
-            # For URLs, use the URL source type
-            if part.content.startswith(('http://', 'https://')):
-                content.append({
-                    "type": "image",
-                    "source": {
-                        "type": "url",
-                        "url": part.content
-                    }
-                })
-            else:
-                # For base64 data, include the mime type
-                content.append({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": part.mime_type or "image/jpeg",  # Default to JPEG if not specified
-                        "data": part.content
-                    }
-                })
-    
-    return {
-        "role": "user" if processed_msg.role in ["user", "system"] else "assistant",
-        "content": content
-    }
