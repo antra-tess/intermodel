@@ -1158,10 +1158,14 @@ def process_image_messages(
     if max_images == 0:
         # If max_images is 0, don't process any images
         image_urls = []
+        print(f"[DEBUG] No images allowed", file=sys.stderr)
     elif max_images < len(image_urls):
         # Only keep the last max_images images
         image_urls = image_urls[-max_images:]
-    
+        print(f"[DEBUG] Limiting to {len(image_urls)} images", file=sys.stderr)
+    else:
+        print(f"[DEBUG] Processing {len(image_urls)} images", file=sys.stderr)
+
     # Create message parts
     current_msg_parts = []
     
