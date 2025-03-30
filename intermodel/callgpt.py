@@ -411,6 +411,7 @@ async def complete(
     elif vendor.startswith("anthropic"):
         import anthropic
         import json
+        import os
 
         if num_completions not in [None, 1]:
             raise NotImplementedError("Anthropic only supports num_completions=1")
