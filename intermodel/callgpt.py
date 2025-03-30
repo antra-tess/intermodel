@@ -412,6 +412,7 @@ async def complete(
         import anthropic
         import json
         import os
+        import sys
 
         if num_completions not in [None, 1]:
             raise NotImplementedError("Anthropic only supports num_completions=1")
