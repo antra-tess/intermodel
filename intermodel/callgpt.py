@@ -573,7 +573,7 @@ async def complete(
                     ]
                 else:
                     messages = []
-                messages = messages + process_image_messages(prompt, max_images=max_images)
+                messages = messages + process_image_messages(prompt, max_images=max_images, vendor="anthropic")
 
         if vendor == "anthropic-steering-preview":
             #kwargs["extra_headers"] = {"anthropic-beta": "steering-2024-06-04"}
