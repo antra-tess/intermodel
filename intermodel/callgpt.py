@@ -574,7 +574,80 @@ async def complete(
                     ]
                 else:
                     messages = []
-                messages = messages + process_image_messages(prompt, prompt_role="assistant", max_images=max_images, vendor="anthropic")
+
+                # Process into intermediate format first
+                processed_messages = []
+                sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
+                
+                # Extract text parts and image URLs
+                text_parts = []
+                image_urls = []
+                
+                for i, section in enumerate(sections):
+                    if i % 2 == 0 and section.strip():
+                        text_parts.append(section.strip())
+                    elif i % 2 == 1:  # Image URL
+                        image_urls.append(section.strip())
+                
+                # Respect max_images parameter
+                if max_images == 0:
+                    # If max_images is 0, don't process any images
+                    image_urls = []
+                    print(f"[DEBUG] No images allowed", file=sys.stderr)
+                elif max_images < len(image_urls):
+                    # Only keep the last max_images images
+                    image_urls = image_urls[-max_images:]
+                    print(f"[DEBUG] Limiting to {len(image_urls)} images", file=sys.stderr)
+                else:
+                    print(f"[DEBUG] Processing {len(image_urls)} images", file=sys.stderr)
+
+                # For non-chat mode with images, we need to:
+                # 1. Add image parts and all text parts as a USER message
+                # 2. Add an empty ASSISTANT message to prompt for completion
+                
+                if len(image_urls) > 0:
+                    # Create user message with images and text
+                    user_msg_parts = []
+                    
+                    # Add all text parts to user message
+                    for text in text_parts:
+                        user_msg_parts.append(MessagePart(
+                            type="text",
+                            content=text
+                        ))
+                    
+                    # Add image parts to user message
+                    for url in image_urls:
+                        user_msg_parts.append(MessagePart(
+                            type="image",
+                            content=url,
+                            mime_type=guess_mime_type(url)
+                        ))
+                    
+                    # Add user message with images and text
+                    if user_msg_parts:
+                        processed_messages.append(ProcessedMessage(
+                            role="user",
+                            parts=user_msg_parts
+                        ))
+                    
+                    # Add empty assistant message to prompt for completion
+                    processed_messages.append(ProcessedMessage(
+                        role="assistant",
+                        parts=[MessagePart(type="text", content="")]
+                    ))
+                else:
+                    # No images - just add all text as assistant message
+                    text_parts_combined = " ".join(text_parts)
+                    if text_parts_combined:
+                        processed_messages.append(ProcessedMessage(
+                            role="assistant",
+                            parts=[MessagePart(type="text", content=text_parts_combined)]
+                        ))
+
+                processed_messages = [convert_to_anthropic_format(msg) for msg in processed_messages]
+
+                messages = messages + processed_messages
 
         if vendor == "anthropic-steering-preview":
             #kwargs["extra_headers"] = {"anthropic-beta": "steering-2024-06-04"}
@@ -1120,85 +1193,6 @@ def process_image_message(content_string, skip_gifs=False, role="user"):
     
     return {"role": gemini_role, "content": content}
 
-
-def process_image_messages(
-    prompt: str,
-    prompt_role: str = "user",
-    max_images: int = 10,
-    skip_gifs: bool = False,
-    vendor: str = None
-) -> Union[List[dict], List["types.Content"], List[ProcessedMessage]]:
-    """Process a prompt containing image URLs into messages.
-    
-    Args:
-        prompt: The input prompt text with image URL markers
-        prompt_role: The role to use for text messages
-        max_images: Maximum number of images to process
-        skip_gifs: If True, skip GIF images
-        vendor: The vendor to format for ("openai", "gemini", "anthropic", or None for intermediate format)
-    
-    Returns:
-        List of messages in the specified format
-    """
-    # Process into intermediate format first
-    processed_messages = []
-    sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
-    
-    # Extract text parts and image URLs
-    text_parts = []
-    image_urls = []
-    
-    for i, section in enumerate(sections):
-        if i % 2 == 0 and section.strip():
-            text_parts.append(section.strip())
-        elif i % 2 == 1:  # Image URL
-            image_urls.append(section.strip())
-    
-    # Respect max_images parameter
-    if max_images == 0:
-        # If max_images is 0, don't process any images
-        image_urls = []
-        print(f"[DEBUG] No images allowed", file=sys.stderr)
-    elif max_images < len(image_urls):
-        # Only keep the last max_images images
-        image_urls = image_urls[-max_images:]
-        print(f"[DEBUG] Limiting to {len(image_urls)} images", file=sys.stderr)
-    else:
-        print(f"[DEBUG] Processing {len(image_urls)} images", file=sys.stderr)
-
-    # Create message parts
-    current_msg_parts = []
-    
-    # Add text parts
-    for text in text_parts:
-        current_msg_parts.append(MessagePart(
-            type="text",
-            content=text
-        ))
-    
-    # Add image parts
-    for url in image_urls:
-        current_msg_parts.append(MessagePart(
-            type="image",
-            content=url,
-            mime_type=guess_mime_type(url)
-        ))
-    
-    if current_msg_parts:
-        processed_messages.append(ProcessedMessage(
-            role=prompt_role,
-            parts=current_msg_parts
-        ))
-    
-    # Convert to vendor-specific format if requested
-    if vendor == "openai":
-        return [convert_to_openai_format(msg) for msg in processed_messages]
-    elif vendor == "gemini":
-        return [convert_to_gemini_format(msg) for msg in processed_messages]
-    elif vendor == "anthropic":
-        return [convert_to_anthropic_format(msg) for msg in processed_messages]
-    else:
-        return processed_messages  # Return intermediate format
 
 
 def complete_sync(*args, **kwargs):
