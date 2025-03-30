@@ -602,39 +602,60 @@ async def complete(
                     print(f"[DEBUG] Processing {len(image_urls)} images", file=sys.stderr)
 
                 # For non-chat mode with images, we need to:
-                # 1. Add image parts and all text parts as a USER message
-                # 2. Add an empty ASSISTANT message to prompt for completion
+                # 1. Keep all content in order (text/image/text/image) in the USER message until the last image
+                # 2. Combine all remaining text into the ASSISTANT message
                 
                 if len(image_urls) > 0:
-                    # Create user message with images and text
+                    # Create user message maintaining order of text and images
                     user_msg_parts = []
+                    assistant_text_parts = []
+                    img_index = 0
+                    last_image_index = -1
                     
-                    # Add all text parts to user message
-                    for text in text_parts:
-                        user_msg_parts.append(MessagePart(
-                            type="text",
-                            content=text
-                        ))
+                    # First find the last image section index
+                    for i, section in enumerate(sections):
+                        if i % 2 == 1:  # Image section
+                            if img_index < len(image_urls):
+                                last_image_index = i
+                                img_index += 1
                     
-                    # Add image parts to user message
-                    for url in image_urls:
-                        user_msg_parts.append(MessagePart(
-                            type="image",
-                            content=url,
-                            mime_type=guess_mime_type(url)
-                        ))
+                    # Reset image index for actual processing
+                    img_index = 0
                     
-                    # Add user message with images and text
+                    # Process all sections in order
+                    for i, section in enumerate(sections):
+                        if i % 2 == 0:  # Text section
+                            if section.strip():
+                                if last_image_index == -1 or i < last_image_index:
+                                    # Text before or between images goes to user message
+                                    user_msg_parts.append(MessagePart(
+                                        type="text",
+                                        content=section.strip()
+                                    ))
+                                else:
+                                    # Text after last image goes to assistant
+                                    assistant_text_parts.append(section.strip())
+                        else:  # Image section
+                            if img_index < len(image_urls):
+                                user_msg_parts.append(MessagePart(
+                                    type="image",
+                                    content=image_urls[img_index],
+                                    mime_type=guess_mime_type(image_urls[img_index])
+                                ))
+                                img_index += 1
+                    
+                    # Add user message with ordered content
                     if user_msg_parts:
                         processed_messages.append(ProcessedMessage(
                             role="user",
                             parts=user_msg_parts
                         ))
                     
-                    # Add empty assistant message to prompt for completion
+                    # Add combined text parts as assistant message
+                    assistant_text = " ".join(assistant_text_parts)
                     processed_messages.append(ProcessedMessage(
                         role="assistant",
-                        parts=[MessagePart(type="text", content="")]
+                        parts=[MessagePart(type="text", content=assistant_text)]
                     ))
                 else:
                     # No images - just add all text as assistant message
