@@ -467,7 +467,7 @@ async def complete(
                 messages = messages + process_image_messages(prompt, max_images=max_images)
 
         if vendor == "anthropic-steering-preview":
-            kwargs["extra_headers"] = {"anthropic-beta": "steering-2024-06-04"}
+            #kwargs["extra_headers"] = {"anthropic-beta": "steering-2024-06-04"}
             if "steering" in kwargs:
                 kwargs["extra_body"] = {"steering": kwargs["steering"]}
                 del kwargs["steering"]
