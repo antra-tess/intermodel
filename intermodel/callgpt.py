@@ -1011,82 +1011,59 @@ def process_image_message(content_string, skip_gifs=False, role="user"):
     return {"role": gemini_role, "content": content}
 
 
-def process_image_messages(prompt: str, prompt_role: str = "user", max_images: int = 10, skip_gifs: bool = False) -> list:
-    """Convert a prompt containing image URLs into a messages array.
-
+def process_image_messages(
+    prompt: str,
+    prompt_role: str = "user",
+    max_images: int = 10,
+    skip_gifs: bool = False,
+    vendor: str = None
+) -> Union[List[dict], List["types.Content"], List[ProcessedMessage]]:
+    """Process a prompt containing image URLs into messages.
+    
     Args:
-        prompt (str): The input prompt text with image URL markers
-        prompt_role (str): The role to use for text messages (default: "user")
-        max_images (int): Maximum number of images to process (default: 10)
-        skip_gifs (bool): If True, skip GIF images (for Gemini models)
-
+        prompt: The input prompt text with image URL markers
+        prompt_role: The role to use for text messages
+        max_images: Maximum number of images to process
+        skip_gifs: If True, skip GIF images
+        vendor: The vendor to format for ("openai", "gemini", "anthropic", or None for intermediate format)
+    
     Returns:
-        list: Array of message objects with text and images
+        List of messages in the specified format
     """
-    import requests
-    import sys
-    import base64
-    from google.genai import types
-
-    print(f"[DEBUG] Processing image messages with role: {prompt_role}", file=sys.stderr)
-    
-    messages = []
+    # Process into intermediate format first
+    processed_messages = []
     sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
-
-    # Constants
-    total_images = (len(sections) - 1) // 2
-    images_to_process = min(total_images, max_images)
     
-    print(f"[DEBUG] Found {total_images} images, will process {images_to_process} (max limit: {max_images})", file=sys.stderr)
-    
-    image_counter = 0
     current_msg_parts = []
-    
-    # Process each section
     for i, section in enumerate(sections):
-        if i % 2 == 0:  # Text section
-            if section.strip():
-                current_msg_parts.append(types.Part(text=section.strip()))
-        else:  # Image URL section
-            image_counter += 1
-            if total_images - image_counter < images_to_process:
-                try:
-                    print(f"[DEBUG] Processing image URL: {section[:100]}{'...' if len(section) > 100 else ''}", file=sys.stderr)
-                    result = download_and_encode_image(section, skip_gifs=skip_gifs)
-                    if result[0] is None:  # Skip if image was filtered out
-                        continue
-                    base64_data, mime_type = result
-                    image_part = types.Part(
-                        inline_data=types.Blob(
-                            mime_type=mime_type,
-                            data=base64.b64decode(base64_data)
-                        )
-                    )
-                    current_msg_parts.append(image_part)
-                    print(f"[DEBUG] Added image to message parts", file=sys.stderr)
-                except requests.RequestException as e:
-                    print(f"[DEBUG] Failed to download image: {str(e)}", file=sys.stderr)
-                    continue  # Skip failed image downloads
-            else:
-                # For images beyond the processing limit, add a text note
-                url_note = f"[Image URL (exceeding limit): {section[:30]}...]"
-                current_msg_parts.append(types.Part(text=url_note))
-                print(f"[DEBUG] Skipped processing image due to limit: {section[:50]}...", file=sys.stderr)
+        if i % 2 == 0 and section.strip():
+            current_msg_parts.append(MessagePart(
+                type="text",
+                content=section.strip()
+            ))
+        elif i % 2 == 1:  # Image URL
+            # Process image URL...
+            current_msg_parts.append(MessagePart(
+                type="image",
+                content=section.strip(),
+                mime_type=guess_mime_type(section.strip())
+            ))
     
-    # Create a Content object with all parts
     if current_msg_parts:
-        # Map roles to Gemini's expected format (only 'user' or 'model')
-        gemini_role = prompt_role
-        if prompt_role == 'assistant':
-            gemini_role = 'model'
-        elif prompt_role not in ['user', 'model']:
-            # Treat system and any other roles as user by default
-            gemini_role = 'user'
-            
-        messages.append(types.Content(parts=current_msg_parts, role=gemini_role))
-
-    print(f"[DEBUG] Finished processing image messages, created {len(messages)} messages", file=sys.stderr)
-    return messages
+        processed_messages.append(ProcessedMessage(
+            role=prompt_role,
+            parts=current_msg_parts
+        ))
+    
+    # Convert to vendor-specific format if requested
+    if vendor == "openai":
+        return [convert_to_openai_format(msg) for msg in processed_messages]
+    elif vendor == "gemini":
+        return [convert_to_gemini_format(msg) for msg in processed_messages]
+    elif vendor == "anthropic":
+        return [convert_to_anthropic_format(msg) for msg in processed_messages]
+    else:
+        return processed_messages  # Return intermediate format
 
 
 def complete_sync(*args, **kwargs):
@@ -1591,3 +1568,92 @@ def _log_gemini_response(response, request_log_file=None):
 
 if __name__ == "__main__":
     InteractiveIntermodel().cmdloop()
+
+@dataclasses.dataclass
+class MessagePart:
+    type: str  # "text" or "image"
+    content: str  # text content or image URL
+    mime_type: Optional[str] = None  # for images
+
+@dataclasses.dataclass
+class ProcessedMessage:
+    role: str
+    parts: List[MessagePart]
+
+def convert_to_openai_format(processed_msg: ProcessedMessage) -> dict:
+    content = []
+    for part in processed_msg.parts:
+        if part.type == "text":
+            content.append({"type": "text", "text": part.content})
+        elif part.type == "image":
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": part.content}
+            })
+    return {"role": processed_msg.role, "content": content}
+
+def convert_to_gemini_format(processed_msg: ProcessedMessage) -> "types.Content":
+    from google.genai import types
+    parts = []
+    for part in processed_msg.parts:
+        if part.type == "text":
+            parts.append(types.Part(text=part.content))
+        elif part.type == "image":
+            # Handle image conversion for Gemini
+            parts.append(types.Part(
+                inline_data=types.Blob(
+                    mime_type=part.mime_type,
+                    data=download_and_process_image(part.content)
+                )
+            ))
+    return types.Content(parts=parts, role=processed_msg.role)
+
+def convert_to_anthropic_format(processed_msg: ProcessedMessage) -> dict:
+    """Convert the intermediate message format to Anthropic's API format.
+    
+    Args:
+        processed_msg: A ProcessedMessage object containing text and/or images
+        
+    Returns:
+        dict: Message formatted for Anthropic's API
+    
+    Notes:
+        - Anthropic supports both URL and base64-encoded images
+        - Images must be JPEG, PNG, GIF, or WebP format
+        - Maximum 100 images per API request
+        - Maximum 5MB per image
+        - If image is larger than 8000x8000px (or 2000x2000px for >20 images), it will be rejected
+    """
+    content = []
+    
+    for part in processed_msg.parts:
+        if part.type == "text":
+            content.append({
+                "type": "text",
+                "text": part.content
+            })
+        elif part.type == "image":
+            # For URLs, use the URL source type
+            if part.content.startswith(('http://', 'https://')):
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "url",
+                        "url": part.content
+                    }
+                })
+            else:
+                # For base64 data, include the mime type
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": part.mime_type or "image/jpeg",  # Default to JPEG if not specified
+                        "data": part.content
+                    }
+                })
+    
+    return {
+        "role": "user" if processed_msg.role in ["user", "system"] else "assistant",
+        "content": content
+    }
