@@ -32,6 +32,26 @@ from intermodel.hf_token import get_hf_tokenizer, get_hf_auth_token
 
 load_dotenv()
 
+def guess_mime_type(url: str) -> Optional[str]:
+    """Get the MIME type from a URL or file path.
+    
+    Args:
+        url: URL or file path to guess the MIME type for
+        
+    Returns:
+        str or None: The MIME type if it can be determined, or None if not
+    """
+    mime_type, _ = guess_type(url)
+    if not mime_type and url.lower().endswith(('.jpg', '.jpeg')):
+        return 'image/jpeg'
+    elif not mime_type and url.lower().endswith('.png'):
+        return 'image/png'
+    elif not mime_type and url.lower().endswith('.gif'):
+        return 'image/gif'
+    elif not mime_type and url.lower().endswith('.webp'):
+        return 'image/webp'
+    return mime_type
+
 MODEL_ALIASES = {}
 untokenizable = set()
 
