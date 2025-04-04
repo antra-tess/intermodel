@@ -845,7 +845,7 @@ async def complete(
                 name_prefix = ""
                 if speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
                     try:
-                        name_prefix = message_history_format.name_format.format(name=speaker_name) + " " # Add space after prefix
+                        name_prefix = message_history_format.name_format.format(speaker_name) + " " # Add space after prefix
                     except KeyError:
                         # Handle cases where format string might be incorrect (e.g., expects {name} but gets other keys)
                         print(f"[WARN] Could not format name prefix for '{speaker_name}' using format '{message_history_format.name_format}'. Using raw name.", file=sys.stderr)
@@ -932,7 +932,7 @@ async def complete(
             prompt_name_prefix = ""
             if prompt_speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
                 try:
-                    prompt_name_prefix = message_history_format.name_format.format(name=prompt_speaker_name) + " " # Add space
+                    prompt_name_prefix = message_history_format.name_format.format(prompt_speaker_name) + " " # Add space
                 except KeyError:
                     print(f"[WARN] Could not format name prefix for prompt user '{prompt_speaker_name}' using format '{message_history_format.name_format}'. Using raw name.", file=sys.stderr)
                     prompt_name_prefix = f"{prompt_speaker_name}: " # Fallback prefix
