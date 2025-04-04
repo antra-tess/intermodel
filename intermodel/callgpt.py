@@ -876,7 +876,7 @@ async def complete(
         elif prompt is not None:
             # Process the prompt string into ProcessedMessage objects
             print(f"[DEBUG] Processing prompt string for Gemini", file=sys.stderr)
-            sections = re.split(r"<\\|(?:begin|end)_of_img_url\\|>\", prompt)
+            sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
             
             # Extract text parts and image URLs
             text_parts_all = []
