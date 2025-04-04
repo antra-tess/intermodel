@@ -846,8 +846,9 @@ async def complete(
                         speaker_name = message_history_format.assistant_name
                     # else: speaker_name remains None if role is unknown and not in msg dict
                 
-                name_prefix = ""
-                if speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
+                name_prefix = "" # Default to no prefix
+                # Only apply prefix for non-assistant roles
+                if role != 'assistant' and speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
                     try:
                         name_prefix = message_history_format.name_format.format(speaker_name) + " " # Add space after prefix
                     except KeyError:
