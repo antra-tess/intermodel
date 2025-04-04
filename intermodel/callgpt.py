@@ -836,11 +836,15 @@ async def complete(
                 parts = []
                 
                 # Determine speaker name for formatting
-                speaker_name = None
-                if role in ['user', 'system']:
-                    speaker_name = name # Use the name passed to complete()
-                elif role == 'assistant':
-                    speaker_name = message_history_format.assistant_name
+                speaker_name = msg.get('name')
+                
+                # Fallback if name not in message dict
+                if speaker_name is None:
+                    if role in ['user', 'system']:
+                        speaker_name = name # Use the top-level name passed to complete()
+                    elif role == 'assistant' and message_history_format:
+                        speaker_name = message_history_format.assistant_name
+                    # else: speaker_name remains None if role is unknown and not in msg dict
                 
                 name_prefix = ""
                 if speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
