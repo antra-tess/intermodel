@@ -94,7 +94,14 @@ def convert_to_gemini_format(processed_msg: ProcessedMessage) -> "types.Content"
                     data=download_and_process_image(part.content)
                 )
             ))
-    return types.Content(parts=parts, role=processed_msg.role)
+    # Map roles to Gemini's expected format ('user' or 'model')
+    gemini_role = processed_msg.role
+    if processed_msg.role == 'assistant' or processed_msg.role == 'system':
+        gemini_role = 'model'
+    elif processed_msg.role != 'user': # Treat any other unknown roles as user
+        gemini_role = 'user'
+    
+    return types.Content(parts=parts, role=gemini_role)
 
 def convert_to_anthropic_format(processed_msg: ProcessedMessage) -> dict:
     """Convert the intermediate message format to Anthropic's API format.
@@ -819,105 +826,168 @@ async def complete(
         
         # Process the messages to extract text and images
         gemini_contents = []
+        processed_messages_intermediate: List[ProcessedMessage] = []
         
         if messages is not None:
-            print(f"[DEBUG] Converting {len(messages)} messages to Gemini format", file=sys.stderr)
-            
+            print(f"[DEBUG] Processing {len(messages)} provided messages for Gemini", file=sys.stderr)
+            # Convert existing message format to ProcessedMessage
             for msg in messages:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
-                
-                # Create a content object with parts for each message
-                content_parts = []
-                
-                # Handle string content
+                parts = []
                 if isinstance(content, str):
-                    # Check if this message contains image URLs
-                    if "<|begin_of_img_url|>" in content and "<|end_of_img_url|>" in content:
-                        print(f"[DEBUG] Found image URLs in message, processing", file=sys.stderr)
-                        
-                        # Parse out the text and image URLs
-                        sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", content)
-                        
-                        # Extract text parts and image URLs
-                        text_parts = []
-                        image_urls = []
-                        
-                        for i, section in enumerate(sections):
-                            if i % 2 == 0:  # Text section
-                                if section.strip():
-                                    text_parts.append(section.strip())
-                            else:  # Image URL
-                                image_urls.append(section.strip())
-                        
-                        # Respect max_images parameter
-                        total_images = len(image_urls)
-                        images_to_process = min(total_images, max_images)
-                        
-                        print(f"[DEBUG] Found {total_images} images, will process {images_to_process}", file=sys.stderr)
-                        
-                        if images_to_process < total_images:
-                            # Only keep the last images_to_process images
-                            image_urls = image_urls[-images_to_process:]
-                        
-                        # Combine text parts into a single prompt for this message
-                        text_prompt = " ".join(text_parts)
-                        
-                        # Add text part first if it exists
-                        if text_prompt:
-                            content_parts.append(types.Part(text=text_prompt))
-                        
-                        # Then add the image parts
-                        for url in image_urls:
-                            try:
-                                print(f"[DEBUG] Processing image URL: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
-                                
-                                # Download the image
-                                response = requests.get(url)
-                                response.raise_for_status()
-                                image_data = response.content
-                                
-                                mime_type = (
-                                    response.headers.get("content-type")
-                                    or guess_type(url)[0]
-                                    or "image/jpeg"
-                                )
-                                
-                                # Skip GIFs for Gemini models
-                                if mime_type.lower() == "image/gif":
-                                    print(f"[DEBUG] Skipping GIF image as it's not supported by Gemini", file=sys.stderr)
-                                    continue
-                                
-                                # Create a Part object with the image for Gemini
-                                image_part = types.Part(
-                                    inline_data=types.Blob(
-                                        mime_type=mime_type,
-                                        data=image_data
-                                    )
-                                )
-                                content_parts.append(image_part)
-                                print(f"[DEBUG] Added image to message ({len(image_data)} bytes)", file=sys.stderr)
-                            except Exception as e:
-                                print(f"[DEBUG] Failed to process image: {str(e)}", file=sys.stderr)
-                                continue
-                    else:
-                        # No images, just text
-                        content_parts.append(types.Part(text=content))
+                    # Simple text message
+                    parts.append(MessagePart(type="text", content=content))
+                elif isinstance(content, list):
+                    # OpenAI-style list of parts
+                    for part_data in content:
+                        part_type = part_data.get("type")
+                        if part_type == "text":
+                            parts.append(MessagePart(type="text", content=part_data.get("text", "")))
+                        elif part_type == "image_url":
+                            image_url_data = part_data.get("image_url", {})
+                            url = image_url_data.get("url")
+                            if url:
+                                # Check if data URL
+                                if url.startswith("data:"):
+                                    # Handle data URLs (extract mime type and base64 data)
+                                    try:
+                                        mime_type_part, data_part = url.split(';', 1)
+                                        encoding_part, b64_data = data_part.split(',', 1)
+                                        mime_type = mime_type_part.split(':')[1]
+                                        # Gemini needs raw bytes, so decode base64
+                                        image_bytes = base64.b64decode(b64_data)
+                                        # We need to pass the raw bytes somehow, maybe store temp?
+                                        # For now, let's just pass the URL and handle download in convert_to_gemini
+                                        parts.append(MessagePart(type="image", content=url, mime_type=mime_type))
+                                        print(f"[DEBUG] Processed data URL image for Gemini ({len(image_bytes)} bytes)", file=sys.stderr)
+                                    except Exception as e:
+                                        print(f"[DEBUG] Failed to process data URL: {e}", file=sys.stderr)
+                                else:
+                                    # Regular URL
+                                    mime_type = guess_mime_type(url)
+                                    parts.append(MessagePart(type="image", content=url, mime_type=mime_type))
+                else:
+                    print(f"[DEBUG] Unknown content type in message: {type(content)}", file=sys.stderr)
                 
-                # Create a Content object with the parts and role
-                if content_parts:
-                    # Map roles to Gemini's expected format (only 'user' or 'model')
-                    gemini_role = role
-                    if role == 'assistant':
-                        gemini_role = 'model'
-                    elif role not in ['user', 'model']:
-                        # Treat system and any other roles as user by default
-                        gemini_role = 'user'
+                if parts:
+                    processed_messages_intermediate.append(ProcessedMessage(role=role, parts=parts))
+            
+        elif prompt is not None:
+            # Process the prompt string into ProcessedMessage objects
+            print(f"[DEBUG] Processing prompt string for Gemini", file=sys.stderr)
+            sections = re.split(r"<\\|(?:begin|end)_of_img_url\\|>\", prompt)
+            
+            # Extract text parts and image URLs
+            text_parts_all = []
+            image_urls_all = []
+            
+            for i, section in enumerate(sections):
+                if i % 2 == 0:  # Text section
+                    if section.strip():
+                        text_parts_all.append(section.strip())
+                else:  # Image URL
+                    image_urls_all.append(section.strip())
+            
+            # Respect max_images parameter
+            images_to_process_urls = image_urls_all
+            if max_images is not None and max_images < len(image_urls_all):
+                images_to_process_urls = image_urls_all[-max_images:]
+                print(f"[DEBUG] Limiting to {len(images_to_process_urls)} images for Gemini", file=sys.stderr)
+            else:
+                print(f"[DEBUG] Processing {len(images_to_process_urls)} images for Gemini", file=sys.stderr)
+                
+            # Construct ProcessedMessage parts
+            # Gemini expects alternating user/model roles.
+            # If images are present, send all text and images as a single user message.
+            # If only text, send as a single user message.
+            current_parts: List[MessagePart] = []
+            img_idx = 0
+            
+            # Add all text parts first
+            combined_text = " ".join(text_parts_all)
+            if combined_text:
+                current_parts.append(MessagePart(type="text", content=combined_text))
+                
+            # Add image parts
+            for url in images_to_process_urls:
+                mime_type = guess_mime_type(url)
+                # Handle data URLs similarly to the 'messages' logic if needed
+                if url.startswith("data:"):
+                    try:
+                        mime_type_part, data_part = url.split(';', 1)
+                        encoding_part, b64_data = data_part.split(',', 1)
+                        mime_type = mime_type_part.split(':')[1]
+                        # Pass the data URL itself; download logic is in convert_to_gemini_format
+                        current_parts.append(MessagePart(type="image", content=url, mime_type=mime_type))
+                        print(f"[DEBUG] Added data URL image part for Gemini", file=sys.stderr)
+                    except Exception as e:
+                        print(f"[DEBUG] Failed to process data URL in prompt: {e}", file=sys.stderr)
+                else:
+                    current_parts.append(MessagePart(type="image", content=url, mime_type=mime_type))
+                
+            if current_parts:
+                # Assume the entire prompt maps to a single 'user' message
+                processed_messages_intermediate.append(ProcessedMessage(role="user", parts=current_parts))
+
+        else: # No messages and no prompt
+            print(f"[DEBUG] No messages or prompt provided for Gemini.", file=sys.stderr)
+            # Potentially add a default empty user message if API requires it
+            # processed_messages_intermediate.append(ProcessedMessage(role="user", parts=[MessagePart(type="text", content="")]))
+
+        # Now convert the intermediate ProcessedMessage objects to Gemini's format
+        print(f"[DEBUG] Converting {len(processed_messages_intermediate)} processed messages to Gemini types.Content", file=sys.stderr)
+        for processed_msg in processed_messages_intermediate:
+            try:
+                gemini_contents.append(convert_to_gemini_format(processed_msg))
+            except ValueError as e:
+                # Handle errors during conversion (e.g., skipping GIFs)
+                print(f"[DEBUG] Skipping message due to conversion error: {e}", file=sys.stderr)
+                continue # Skip this message
+            except Exception as e:
+                print(f"[DEBUG] Unexpected error converting message to Gemini format: {e}", file=sys.stderr)
+                # Decide whether to skip or raise
+                # For now, let's skip to avoid failing the whole request
+                continue 
+                
+        # Ensure gemini_contents is not empty if the API requires at least one message
+        if not gemini_contents:
+            # If all messages were skipped (e.g., only contained GIFs), send an empty user message
+            print("[DEBUG] No valid messages left after conversion; sending empty user message.", file=sys.stderr)
+            gemini_contents.append(types.Content(parts=[types.Part(text=" ")], role="user")) # Use space to avoid truly empty prompt
+            
+        # Ensure roles alternate user/model and start with user
+        if gemini_contents:
+            # Correct roles if needed (Gemini expects user/model alternation)
+            corrected_contents = []
+            expected_role = "user"
+            for i, content in enumerate(gemini_contents):
+                # If the role doesn't match the expected sequence, try to correct it.
+                # A simple strategy: force the role. More complex merging might be needed.
+                if content.role != expected_role:
+                    print(f"[DEBUG] Correcting role sequence at index {i}. Expected '{expected_role}', got '{content.role}'. Forcing role.", file=sys.stderr)
+                    # Create a new Content object with the corrected role
+                    # We need to ensure types is imported if not already
+                    try:
+                        from google.genai import types
+                        corrected_contents.append(types.Content(parts=content.parts, role=expected_role))
+                    except ImportError:
+                        print("[ERROR] google.genai types not available for role correction.", file=sys.stderr)
+                        # Fallback: add the content as is, hoping the API handles it
+                        corrected_contents.append(content)
+                else:
+                    corrected_contents.append(content)
                     
-                    gemini_contents.append(types.Content(parts=content_parts, role=gemini_role))
-        else:
-            # If no messages format was provided, use the prompt directly
-            gemini_contents = [types.Content(parts=[types.Part(text=prompt)], role="user")]
+            # Flip the expected role for the next message
+            expected_role = "model" if expected_role == "user" else "user"
+            
+            gemini_contents = corrected_contents # Use the corrected list
+            
+            # Gemini API requires the last message to be from the 'user'
+            if gemini_contents and gemini_contents[-1].role != "user":
+                print("[DEBUG] Last message is not 'user'. Appending an empty user message.", file=sys.stderr)
+                # Add an empty user message; API might require non-empty content
+                gemini_contents.append(types.Content(parts=[types.Part(text=" ")], role="user"))
             
         print(f"[DEBUG] Sending request with {len(gemini_contents)} content objects", file=sys.stderr)
         
@@ -1126,35 +1196,32 @@ async def complete(
         raise NotImplementedError(f"Unknown vendor {vendor}")
 
 
-def download_and_encode_image(url, skip_gifs=False):
-    """Download image and convert to base64.
+def download_and_process_image(url: str) -> bytes:
+    """Download image and return raw bytes.
     
     Args:
         url (str): URL of the image to download
-        skip_gifs (bool): If True, skip GIF images (for Gemini models)
+        
+    Returns:
+        bytes: Raw image data
     """
-    import base64
     import requests
-    from mimetypes import guess_type
     import sys
 
-    print(f"[DEBUG] Downloading image from: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
+    print(f"[DEBUG] Downloading image for Gemini from: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
     response = requests.get(url)
     response.raise_for_status()
     image_data = response.content
-    mime_type = (
-        response.headers.get("content-type")
-        or guess_type(url)[0]
-        or "application/octet-stream"
-    )
+    mime_type = response.headers.get("content-type") or guess_mime_type(url)
     
-    # Skip GIFs if requested (for Gemini models)
-    if skip_gifs and mime_type.lower() == "image/gif":
-        print(f"[DEBUG] Skipping GIF image as it's not supported", file=sys.stderr)
-        return None, None
+    # Gemini doesn't support GIFs
+    if mime_type and mime_type.lower() == "image/gif":
+        print(f"[DEBUG] Skipping GIF image as it's not supported by Gemini", file=sys.stderr)
+        # TODO: Consider converting GIF to a supported format (e.g., PNG) instead of skipping
+        raise ValueError("Gemini does not support GIF images.") 
         
     print(f"[DEBUG] Downloaded image: {len(image_data)} bytes, mime type: {mime_type}", file=sys.stderr)
-    return base64.b64encode(image_data).decode(), mime_type
+    return image_data
 
 
 def process_image_message(content_string, skip_gifs=False, role="user"):
