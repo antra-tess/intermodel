@@ -348,7 +348,6 @@ async def complete(
                         formatted_messages.append(f"Assistant: {content}")
                     else:
                         formatted_messages.append(f"{role.capitalize()}: {content}")
-                
                 # Join all messages with newlines
                 api_arguments["prompt"] = "\n\n".join(formatted_messages)
                 print(f"[DEBUG] Converted chat messages to completions prompt: {len(api_arguments['prompt'])} chars")
@@ -835,15 +834,36 @@ async def complete(
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
                 parts = []
-                if isinstance(content, str):
+                
+                # Determine speaker name for formatting
+                speaker_name = None
+                if role in ['user', 'system']:
+                    speaker_name = name # Use the name passed to complete()
+                elif role == 'assistant':
+                    speaker_name = message_history_format.assistant_name
+                
+                name_prefix = ""
+                if speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
+                    try:
+                        name_prefix = message_history_format.name_format.format(name=speaker_name) + " " # Add space after prefix
+                    except KeyError:
+                        # Handle cases where format string might be incorrect (e.g., expects {name} but gets other keys)
+                        print(f"[WARN] Could not format name prefix for '{speaker_name}' using format '{message_history_format.name_format}'. Using raw name.", file=sys.stderr)
+                        name_prefix = f"{speaker_name}: " # Fallback prefix
+                
+                formatted_content = name_prefix + content
+                if isinstance(formatted_content, str):
                     # Simple text message
-                    parts.append(MessagePart(type="text", content=content))
-                elif isinstance(content, list):
+                    parts.append(MessagePart(type="text", content=formatted_content))
+                elif isinstance(formatted_content, list):
                     # OpenAI-style list of parts
-                    for part_data in content:
+                    for i, part_data in enumerate(formatted_content):
                         part_type = part_data.get("type")
                         if part_type == "text":
-                            parts.append(MessagePart(type="text", content=part_data.get("text", "")))
+                            original_text = part_data.get("text", "")
+                            # Apply prefix only to the first text part if there are multiple parts
+                            formatted_text = (name_prefix + original_text) if i == 0 else original_text
+                            parts.append(MessagePart(type="text", content=formatted_text))
                         elif part_type == "image_url":
                             image_url_data = part_data.get("image_url", {})
                             url = image_url_data.get("url")
@@ -868,7 +888,7 @@ async def complete(
                                     mime_type = guess_mime_type(url)
                                     parts.append(MessagePart(type="image", content=url, mime_type=mime_type))
                 else:
-                    print(f"[DEBUG] Unknown content type in message: {type(content)}", file=sys.stderr)
+                    print(f"[DEBUG] Unknown content type in message: {type(formatted_content)}", file=sys.stderr)
                 
                 if parts:
                     processed_messages_intermediate.append(ProcessedMessage(role=role, parts=parts))
@@ -905,7 +925,20 @@ async def complete(
             img_idx = 0
             
             # Add all text parts first
-            combined_text = " ".join(text_parts_all)
+            original_combined_text = " ".join(text_parts_all)
+            
+            # Determine speaker name and format prefix for prompt case
+            prompt_speaker_name = name # Assuming prompt comes from the 'user' named 'name'
+            prompt_name_prefix = ""
+            if prompt_speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
+                try:
+                    prompt_name_prefix = message_history_format.name_format.format(name=prompt_speaker_name) + " " # Add space
+                except KeyError:
+                    print(f"[WARN] Could not format name prefix for prompt user '{prompt_speaker_name}' using format '{message_history_format.name_format}'. Using raw name.", file=sys.stderr)
+                    prompt_name_prefix = f"{prompt_speaker_name}: " # Fallback prefix
+                    
+            combined_text = prompt_name_prefix + original_combined_text
+            
             if combined_text:
                 current_parts.append(MessagePart(type="text", content=combined_text))
                 
@@ -955,39 +988,6 @@ async def complete(
             # If all messages were skipped (e.g., only contained GIFs), send an empty user message
             print("[DEBUG] No valid messages left after conversion; sending empty user message.", file=sys.stderr)
             gemini_contents.append(types.Content(parts=[types.Part(text=" ")], role="user")) # Use space to avoid truly empty prompt
-            
-        # Ensure roles alternate user/model and start with user
-        if gemini_contents:
-            # Correct roles if needed (Gemini expects user/model alternation)
-            corrected_contents = []
-            expected_role = "user"
-            for i, content in enumerate(gemini_contents):
-                # If the role doesn't match the expected sequence, try to correct it.
-                # A simple strategy: force the role. More complex merging might be needed.
-                if content.role != expected_role:
-                    print(f"[DEBUG] Correcting role sequence at index {i}. Expected '{expected_role}', got '{content.role}'. Forcing role.", file=sys.stderr)
-                    # Create a new Content object with the corrected role
-                    # We need to ensure types is imported if not already
-                    try:
-                        from google.genai import types
-                        corrected_contents.append(types.Content(parts=content.parts, role=expected_role))
-                    except ImportError:
-                        print("[ERROR] google.genai types not available for role correction.", file=sys.stderr)
-                        # Fallback: add the content as is, hoping the API handles it
-                        corrected_contents.append(content)
-                else:
-                    corrected_contents.append(content)
-                    
-            # Flip the expected role for the next message
-            expected_role = "model" if expected_role == "user" else "user"
-            
-            gemini_contents = corrected_contents # Use the corrected list
-            
-            # Gemini API requires the last message to be from the 'user'
-            if gemini_contents and gemini_contents[-1].role != "user":
-                print("[DEBUG] Last message is not 'user'. Appending an empty user message.", file=sys.stderr)
-                # Add an empty user message; API might require non-empty content
-                gemini_contents.append(types.Content(parts=[types.Part(text=" ")], role="user"))
             
         print(f"[DEBUG] Sending request with {len(gemini_contents)} content objects", file=sys.stderr)
         
