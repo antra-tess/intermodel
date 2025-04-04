@@ -1125,7 +1125,7 @@ async def complete(
                         "temperature": temperature or 1.0,
                         "top_p": top_p or 1.0,
                         "top_k": top_k or 40,
-                        "max_output_tokens": max_tokens or 2048,
+                        "max_output_tokens": max_tokens or 4000,
                         "stop_sequences": stop or [],
                         "safety_settings": "BLOCK_NONE for all categories"
                     }
@@ -1142,7 +1142,7 @@ async def complete(
                         temperature=temperature or 1.0,
                         top_p=top_p or 1.0,
                         top_k=top_k or 40,
-                        max_output_tokens=max_tokens or 2048,
+                        max_output_tokens=max_tokens or 4000,
                         stop_sequences=stop or [],
                         safety_settings=[
                             types.SafetySetting(
@@ -1679,17 +1679,25 @@ def _log_gemini_request(request_data):
     if "config" in request_data:
         # Convert config to dict with special handling for nested objects
         config_dict = {}
-        if hasattr(request_data["config"], "temperature"):
-            config_dict["temperature"] = request_data["config"].temperature
-        if hasattr(request_data["config"], "top_p"):
-            config_dict["top_p"] = request_data["config"].top_p
-        if hasattr(request_data["config"], "top_k"):
-            config_dict["top_k"] = request_data["config"].top_k
-        if hasattr(request_data["config"], "max_output_tokens"):
-            config_dict["max_output_tokens"] = request_data["config"].max_output_tokens
-        if hasattr(request_data["config"], "stop_sequences"):
-            config_dict["stop_sequences"] = request_data["config"].stop_sequences
+        config_source = request_data["config"] # This is already a dictionary
         
+        # Directly access keys from the dictionary
+        if "temperature" in config_source:
+            config_dict["temperature"] = config_source["temperature"]
+        if "top_p" in config_source:
+            config_dict["top_p"] = config_source["top_p"]
+        if "top_k" in config_source:
+            config_dict["top_k"] = config_source["top_k"]
+        if "max_output_tokens" in config_source:
+            config_dict["max_output_tokens"] = config_source["max_output_tokens"]
+        if "stop_sequences" in config_source:
+            config_dict["stop_sequences"] = config_source["stop_sequences"]
+        # Add other potential config keys if needed (e.g., safety_settings, response_modalities)
+        if "safety_settings" in config_source:
+             config_dict["safety_settings"] = config_source["safety_settings"] # Might be complex object/string
+        if "response_modalities" in config_source:
+             config_dict["response_modalities"] = config_source["response_modalities"]
+         
         processed_data["config"] = config_dict
     
     # Write to file
