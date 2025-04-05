@@ -842,7 +842,7 @@ async def complete(
                 # Check if this is the last message that needs to be a 'model' role
                 is_last_message = (msg == messages[last_message_index])
                 if is_last_message:
-                    role = 'model'  # Force the last message to have 'model' role
+                    role = 'assistant'  # Force the last message to have 'model' role
                 
                 speaker_name = msg.get('name')
                  
