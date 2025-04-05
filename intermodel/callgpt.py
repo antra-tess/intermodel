@@ -830,14 +830,22 @@ async def complete(
         if messages is not None:
             print(f"[DEBUG] Processing {len(messages)} provided messages for Gemini", file=sys.stderr)
             # Convert existing message format to ProcessedMessage
+            # First determine if there will be a valid last message that should be a 'model' role
+            last_message_index = len(messages) - 1
+            
             for msg in messages:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
                 parts = []
                 
                 # Determine speaker name for formatting
-                speaker_name = msg.get('name')
+                # Check if this is the last message that needs to be a 'model' role
+                is_last_message = (msg == messages[last_message_index])
+                if is_last_message:
+                    role = 'model'  # Force the last message to have 'model' role
                 
+                speaker_name = msg.get('name')
+                 
                 # Fallback if name not in message dict
                 if speaker_name is None:
                     if role in ['user', 'system']:
@@ -845,16 +853,16 @@ async def complete(
                     elif role == 'assistant' and message_history_format:
                         speaker_name = message_history_format.assistant_name
                     # else: speaker_name remains None if role is unknown and not in msg dict
-                
+                 
                 name_prefix = "" # Default to no prefix
-                # Only apply prefix for non-assistant roles
-                if role != 'assistant' and speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
-                    try:
-                        name_prefix = message_history_format.name_format.format(speaker_name) + " " # Add space after prefix
-                    except KeyError:
-                        # Handle cases where format string might be incorrect (e.g., expects {name} but gets other keys)
-                        print(f"[WARN] Could not format name prefix for '{speaker_name}' using format '{message_history_format.name_format}'. Using raw name.", file=sys.stderr)
-                        name_prefix = f"{speaker_name}: " # Fallback prefix
+                # Only apply prefix for non-assistant roles and not for the last message (which must be 'model' role)
+                if role != 'assistant' and not is_last_message and speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
+                     try:
+                         name_prefix = message_history_format.name_format.format(speaker_name) + " " # Add space after prefix
+                     except KeyError:
+                         # Handle cases where format string might be incorrect (e.g., expects {name} but gets other keys)
+                         print(f"[WARN] Could not format name prefix for '{speaker_name}' using format '{message_history_format.name_format}'. Using raw name.", file=sys.stderr)
+                         name_prefix = f"{speaker_name}: " # Fallback prefix
                 
                 formatted_content = name_prefix + content
                 if isinstance(formatted_content, str):
@@ -896,6 +904,7 @@ async def complete(
                     print(f"[DEBUG] Unknown content type in message: {type(formatted_content)}", file=sys.stderr)
                 
                 if parts:
+                    # Create the processed message with the potentially modified role
                     processed_messages_intermediate.append(ProcessedMessage(role=role, parts=parts))
             
         elif prompt is not None:
