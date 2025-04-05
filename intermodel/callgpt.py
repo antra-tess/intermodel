@@ -1147,35 +1147,35 @@ async def complete(
                 response = client.models.generate_content(
                     model=model,
                     contents=gemini_contents,
-                    config=types.GenerateContentConfig(
-                        temperature=temperature or 1.0,
-                        top_p=top_p or 1.0,
-                        top_k=top_k or 40,
-                        max_output_tokens=max_tokens or 4000,
-                        #stop_sequences=stop or [],
-                        safety_settings=[
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                            types.SafetySetting(
-                                category=types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-                                threshold=types.HarmBlockThreshold.BLOCK_NONE,
-                            ),
-                        ]
-                    )
+                    # config=types.GenerateContentConfig(
+                    #     temperature=temperature or 1.0,
+                    #     top_p=top_p or 1.0,
+                    #     top_k=top_k or 40,
+                    #     max_output_tokens=max_tokens or 4000,
+                    #     #stop_sequences=stop or [],
+                    #     safety_settings=[
+                    #         types.SafetySetting(
+                    #             category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                    #             threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                    #         ),
+                    #         types.SafetySetting(
+                    #             category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                    #             threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                    #         ),
+                    #         types.SafetySetting(
+                    #             category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                    #             threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                    #         ),
+                    #         types.SafetySetting(
+                    #             category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                    #             threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                    #         ),
+                    #         types.SafetySetting(
+                    #             category=types.HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+                    #             threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                    #         ),
+                    #     ]
+                    # )
                 )
                 
                 # Log the response
