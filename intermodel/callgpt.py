@@ -1152,7 +1152,7 @@ async def complete(
                         top_p=top_p or 1.0,
                         top_k=top_k or 40,
                         max_output_tokens=max_tokens or 4000,
-                        stop_sequences=stop or [],
+                        #stop_sequences=stop or [],
                         safety_settings=[
                             types.SafetySetting(
                                 category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
