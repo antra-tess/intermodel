@@ -306,7 +306,6 @@ async def complete(
                     or model.startswith("deepseek-reasoner")
                     or model.startswith("deepseek/deepseek-r1")
                     or model.startswith("deepseek-ai/DeepSeek-R1-Zero")
-                    or model.startswith("grok")
                     or model.startswith("aion")
                 ):
                     if api_base.startswith("https://openrouter.ai"):
