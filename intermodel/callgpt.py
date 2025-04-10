@@ -1078,7 +1078,7 @@ async def complete(
                                 threshold=types.HarmBlockThreshold.BLOCK_NONE,
                             ),
                         ]
-                    )C
+                    )
                 )
                 
                 # Log the response
