@@ -356,10 +356,22 @@ async def complete(
         if api_suffix == "/chat/completions":
             print(f"[DEBUG] message count: {len(api_arguments['messages'])}")
 
+        # Log the request before sending
+        request_log_file = _log_openai_request({
+            "url": api_base + api_suffix,
+            "headers": headers,
+            "body": api_arguments
+        })
+
         async with session.post(
             api_base + api_suffix, headers=headers, json=api_arguments
         ) as response:
             api_response = await response.json()
+
+            # Log the response immediately after receiving it
+            _log_openai_response(api_response, response.status, request_log_file)
+
+            # Existing error logging for 400 status
             if response.status == 400:
                 error_info = {
                     "request": {
@@ -911,19 +923,19 @@ async def complete(
             # Process the prompt string into ProcessedMessage objects
             print(f"[DEBUG] Processing prompt string for Gemini", file=sys.stderr)
             sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
-            
-            # Extract text parts and image URLs
+                        
+                        # Extract text parts and image URLs
             text_parts_all = []
             image_urls_all = []
-            
-            for i, section in enumerate(sections):
-                if i % 2 == 0:  # Text section
-                    if section.strip():
+                        
+                        for i, section in enumerate(sections):
+                            if i % 2 == 0:  # Text section
+                                if section.strip():
                         text_parts_all.append(section.strip())
-                else:  # Image URL
+                            else:  # Image URL
                     image_urls_all.append(section.strip())
-            
-            # Respect max_images parameter
+                        
+                        # Respect max_images parameter
             images_to_process_urls = image_urls_all
             if max_images is not None and max_images < len(image_urls_all):
                 images_to_process_urls = image_urls_all[-max_images:]
@@ -991,11 +1003,11 @@ async def complete(
                 # Handle errors during conversion (e.g., skipping GIFs)
                 print(f"[DEBUG] Skipping message due to conversion error: {e}", file=sys.stderr)
                 continue # Skip this message
-            except Exception as e:
+                            except Exception as e:
                 print(f"[DEBUG] Unexpected error converting message to Gemini format: {e}", file=sys.stderr)
                 # Decide whether to skip or raise
                 # For now, let's skip to avoid failing the whole request
-                continue 
+                                continue
                 
         # Ensure gemini_contents is not empty if the API requires at least one message
         if not gemini_contents:
@@ -1066,7 +1078,7 @@ async def complete(
                                 threshold=types.HarmBlockThreshold.BLOCK_NONE,
                             ),
                         ]
-                    )
+                    )C
                 )
                 
                 # Log the response
@@ -1706,7 +1718,7 @@ def _log_gemini_request(request_data):
              config_dict["safety_settings"] = config_source["safety_settings"] # Might be complex object/string
         if "response_modalities" in config_source:
              config_dict["response_modalities"] = config_source["response_modalities"]
-         
+        
         processed_data["config"] = config_dict
     
     # Write to file
@@ -1754,12 +1766,45 @@ def _log_gemini_response(response, request_log_file=None):
     # Process response to a serializable format
     processed_data = {}
     
+    # Capture all direct attributes of the response
+    try:
+        # Get all available attributes from the response object
+        all_attrs = dir(response)
+        for attr in all_attrs:
+            # Skip private/internal attributes and methods
+            if attr.startswith('_') or callable(getattr(response, attr)):
+                continue
+                
+            # Add the attribute value to processed data
+            try:
+                attr_value = getattr(response, attr)
+                # Convert value to a serializable format
+                processed_data[f"_{attr}"] = str(attr_value)  # Prefix with underscore to avoid conflicts
+            except Exception as e:
+                processed_data[f"_{attr}_error"] = f"Error accessing {attr}: {str(e)}"
+    except Exception as e:
+        processed_data["_attrs_error"] = f"Error capturing response attributes: {str(e)}"
+    
     # Check if response has candidates
     if hasattr(response, "candidates") and response.candidates:
         processed_data["candidates"] = []
         
         for candidate in response.candidates:
-            candidate_data = {}
+            candidate_data = {"_raw_attrs": {}}
+            
+            # Capture all attributes of each candidate
+            try:
+                for attr in dir(candidate):
+                    if attr.startswith('_') or callable(getattr(candidate, attr)):
+                        continue
+                    try:
+                        attr_value = getattr(candidate, attr)
+                        if attr != "content":  # Handle content separately
+                            candidate_data["_raw_attrs"][attr] = str(attr_value)
+                    except Exception as e:
+                        candidate_data["_raw_attrs"][f"{attr}_error"] = str(e)
+            except Exception as e:
+                candidate_data["_raw_attrs_error"] = str(e)
             
             if hasattr(candidate, "content") and candidate.content:
                 content_data = {"parts": []}
@@ -1768,10 +1813,36 @@ def _log_gemini_response(response, request_log_file=None):
                 if hasattr(candidate.content, "role"):
                     content_data["role"] = candidate.content.role
                 
+                # Capture all other content attributes
+                try:
+                    for attr in dir(candidate.content):
+                        if attr.startswith('_') or callable(getattr(candidate.content, attr)) or attr in ['parts', 'role']:
+                            continue
+                        try:
+                            attr_value = getattr(candidate.content, attr)
+                            content_data[f"_attr_{attr}"] = str(attr_value)
+                        except Exception as e:
+                            content_data[f"_attr_{attr}_error"] = str(e)
+                except Exception as e:
+                    content_data["_attrs_error"] = str(e)
+                
                 # Process the parts
                 if hasattr(candidate.content, "parts"):
                     for part in candidate.content.parts:
-                        part_data = {}
+                        part_data = {"_raw_attrs": {}}
+                        
+                        # Capture all part attributes
+                        try:
+                            for attr in dir(part):
+                                if attr.startswith('_') or callable(getattr(part, attr)) or attr in ['text', 'inline_data']:
+                                    continue
+                                try:
+                                    attr_value = getattr(part, attr)
+                                    part_data["_raw_attrs"][attr] = str(attr_value)
+                                except Exception as e:
+                                    part_data["_raw_attrs"][f"{attr}_error"] = str(e)
+                        except Exception as e:
+                            part_data["_raw_attrs_error"] = str(e)
                         
                         if hasattr(part, "text") and part.text is not None:
                             part_data["type"] = "text"
@@ -1791,11 +1862,41 @@ def _log_gemini_response(response, request_log_file=None):
             if hasattr(candidate, "finish_reason"):
                 candidate_data["finish_reason"] = candidate.finish_reason
                 
+            # Add prompt feedback if available
+            if hasattr(candidate, "prompt_feedback") and candidate.prompt_feedback:
+                candidate_data["prompt_feedback"] = {}
+                try:
+                    for attr in dir(candidate.prompt_feedback):
+                        if attr.startswith('_') or callable(getattr(candidate.prompt_feedback, attr)):
+                            continue
+                        try:
+                            attr_value = getattr(candidate.prompt_feedback, attr)
+                            candidate_data["prompt_feedback"][attr] = str(attr_value)
+                        except Exception as e:
+                            candidate_data["prompt_feedback"][f"{attr}_error"] = str(e)
+                except Exception as e:
+                    candidate_data["prompt_feedback_error"] = str(e)
+                
             processed_data["candidates"].append(candidate_data)
     
     # Add simple text response if present
     if hasattr(response, "text"):
         processed_data["text"] = response.text
+        
+    # Add response usage information if available
+    if hasattr(response, "usage") and response.usage:
+        processed_data["usage"] = {}
+        try:
+            for attr in dir(response.usage):
+                if attr.startswith('_') or callable(getattr(response.usage, attr)):
+                    continue
+                try:
+                    attr_value = getattr(response.usage, attr)
+                    processed_data["usage"][attr] = str(attr_value)
+                except Exception as e:
+                    processed_data["usage"][f"{attr}_error"] = str(e)
+        except Exception as e:
+            processed_data["usage_error"] = str(e)
     
     # Write to file
     with open(filename, "w", encoding="utf-8") as f:
@@ -1807,4 +1908,123 @@ def _log_gemini_response(response, request_log_file=None):
 
 if __name__ == "__main__":
     InteractiveIntermodel().cmdloop()
+
+
+def _log_openai_request(request_data):
+    """Log OpenAI request data to a JSON file."""
+    import json
+    import os
+    import datetime
+    import glob
+
+    # Create openai_logs directory if it doesn't exist
+    log_dir = os.path.join(os.getcwd(), "openai_logs")
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Find highest existing log number
+    existing_logs = glob.glob(os.path.join(log_dir, "openai_request_*.json"))
+    if existing_logs:
+        try:
+            last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+             # Handle cases where filename format might be unexpected
+             next_num = len(existing_logs) + 1
+    else:
+        next_num = 1
+
+    # Generate filename with timestamp and incrementing number
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = os.path.join(log_dir, f"openai_request_{next_num:04d}_{timestamp}.json")
+
+    # Process data for logging (e.g., redact sensitive info if needed)
+    processed_data = {}
+    if "url" in request_data:
+        processed_data["url"] = request_data["url"]
+    if "headers" in request_data:
+        # Redact Authorization header
+        processed_data["headers"] = {
+            k: v if k.lower() != "authorization" else "Bearer [REDACTED]"
+            for k, v in request_data["headers"].items()
+        }
+    if "body" in request_data:
+        processed_data["body"] = request_data["body"] # Body should already be prepared JSON
+
+    # Write to file
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(processed_data, f, indent=2, ensure_ascii=False)
+        print(f"[DEBUG] Logged OpenAI request to {filename}", file=sys.stderr)
+    except TypeError as e:
+         print(f"[ERROR] Failed to serialize OpenAI request data for logging: {e}", file=sys.stderr)
+         # Attempt to log with a simple string representation as fallback
+         try:
+             with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
+                 f.write(str(processed_data))
+             print(f"[DEBUG] Logged OpenAI request (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
+         except Exception as fallback_e:
+             print(f"[ERROR] Fallback OpenAI request logging failed: {fallback_e}", file=sys.stderr)
+    except Exception as e:
+         print(f"[ERROR] Failed to log OpenAI request to {filename}: {e}", file=sys.stderr)
+
+    return filename
+
+
+def _log_openai_response(response_data, status_code, request_log_file=None):
+    """Log OpenAI response data to a JSON file."""
+    import json
+    import os
+    import datetime
+    import glob
+
+    # Create openai_logs directory if it doesn't exist
+    log_dir = os.path.join(os.getcwd(), "openai_logs")
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Generate filename
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    if request_log_file:
+        # Extract the request number to maintain relationship
+        try:
+            basename = os.path.basename(request_log_file)
+            request_num = basename.split('_')[2].split('.')[0] # Get number part
+            filename = os.path.join(log_dir, f"openai_response_{request_num}_{timestamp}.json")
+        except (IndexError, ValueError):
+            # Fallback if request filename format is unexpected
+            filename = os.path.join(log_dir, f"openai_response_unknown_{timestamp}.json")
+    else:
+        # Find highest existing log number if no request file
+        existing_logs = glob.glob(os.path.join(log_dir, "openai_response_*.json"))
+        if existing_logs:
+            try:
+                last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs if os.path.basename(f).startswith('openai_response_') and len(os.path.basename(f).split('_')) > 2])
+                next_num = last_num + 1
+            except (IndexError, ValueError):
+                next_num = len(existing_logs) + 1 # Fallback numbering
+        else:
+            next_num = 1
+        filename = os.path.join(log_dir, f"openai_response_{next_num:04d}_{timestamp}.json")
+
+    processed_data = {
+        "status_code": status_code,
+        "response_body": response_data # Assuming response_data is already JSON/dict
+    }
+
+    # Write to file
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(processed_data, f, indent=2, ensure_ascii=False)
+        print(f"[DEBUG] Logged OpenAI response to {filename}", file=sys.stderr)
+    except TypeError as e:
+         print(f"[ERROR] Failed to serialize OpenAI response data for logging: {e}", file=sys.stderr)
+         try:
+             with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
+                 f.write(str(processed_data))
+             print(f"[DEBUG] Logged OpenAI response (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
+         except Exception as fallback_e:
+              print(f"[ERROR] Fallback OpenAI response logging failed: {fallback_e}", file=sys.stderr)
+    except Exception as e:
+         print(f"[ERROR] Failed to log OpenAI response to {filename}: {e}", file=sys.stderr)
+
+    return filename
 
