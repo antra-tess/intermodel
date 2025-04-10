@@ -928,11 +928,11 @@ async def complete(
             text_parts_all = []
             image_urls_all = []
                         
-                        for i, section in enumerate(sections):
-                            if i % 2 == 0:  # Text section
-                                if section.strip():
-                        text_parts_all.append(section.strip())
-                            else:  # Image URL
+            for i, section in enumerate(sections):
+                if i % 2 == 0:  # Text section
+                    if section.strip():
+            text_parts_all.append(section.strip())
+                else:  # Image URL
                     image_urls_all.append(section.strip())
                         
                         # Respect max_images parameter
