@@ -1003,11 +1003,11 @@ async def complete(
                 # Handle errors during conversion (e.g., skipping GIFs)
                 print(f"[DEBUG] Skipping message due to conversion error: {e}", file=sys.stderr)
                 continue # Skip this message
-                            except Exception as e:
+            except Exception as e:
                 print(f"[DEBUG] Unexpected error converting message to Gemini format: {e}", file=sys.stderr)
                 # Decide whether to skip or raise
                 # For now, let's skip to avoid failing the whole request
-                                continue
+                continue
                 
         # Ensure gemini_contents is not empty if the API requires at least one message
         if not gemini_contents:
