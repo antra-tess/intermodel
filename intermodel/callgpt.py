@@ -15,7 +15,6 @@ from typing import Union, List, Optional, Iterable
 import base64
 from io import BytesIO
 from PIL import Image
-import sys
 import datetime
 import requests
 from mimetypes import guess_type
@@ -198,6 +197,8 @@ async def complete(
     if vendor_config is not None and vendor in vendor_config:
         kwargs = {**vendor_config[vendor]["config"], **kwargs}
     if vendor.startswith("openai"):
+        import sys
+
         global session
         if session is None:
             session = aiohttp.ClientSession()
