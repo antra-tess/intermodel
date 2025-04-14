@@ -198,6 +198,7 @@ async def complete(
         kwargs = {**vendor_config[vendor]["config"], **kwargs}
     if vendor.startswith("openai"):
         import sys
+        import os
 
         global session
         if session is None:
