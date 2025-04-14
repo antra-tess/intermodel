@@ -181,6 +181,7 @@ async def complete(
     vendor=None,
     vendor_config=None,
     force_api_mode=None,
+    log_dir="intermodel_logs",  # Add log_dir parameter with a default
     **kwargs,
 ):
     message_history_format = kwargs.get("message_history_format", None)
@@ -717,9 +718,15 @@ async def complete(
                 return str(obj)
         
         # Pretty print the JSON for readability
-        with open("anthropic_request.json", "w") as f:
-            f.write(json.dumps(request_payload, indent=2, cls=CustomEncoder))
-        #print(json.dumps(request_payload, indent=2, cls=CustomEncoder), file=sys.stderr)
+        # Remove old logging
+        # with open("anthropic_request.json", "w") as f:
+        #     f.write(json.dumps(request_payload, indent=2, cls=CustomEncoder))
+        # print(json.dumps(request_payload, indent=2, cls=CustomEncoder), file=sys.stderr)
+
+        # Use new logging function if log_dir is set
+        request_log_file = None
+        if log_dir:
+            request_log_file = _log_anthropic_request(request_payload, log_dir)
 
         if 'thinking' in kwargs:
             response = await client.messages.create(
@@ -1047,7 +1054,9 @@ async def complete(
                 }
                 
                 # Log the request
-                request_log_file = _log_gemini_request(request_data)
+                request_log_file = None
+                if log_dir:
+                    request_log_file = _log_gemini_request(request_data, log_dir)
                 
                 # For image generation models
                 response = client.models.generate_content(
@@ -1081,7 +1090,8 @@ async def complete(
                 )
                 
                 # Log the response
-                _log_gemini_response(response, request_log_file)
+                if log_dir:
+                    _log_gemini_response(response, log_dir, request_log_file)
                 
                 # Process the response for image generation
                 text_content = ""
@@ -1152,7 +1162,9 @@ async def complete(
                 }
                 
                 # Log the request
-                request_log_file = _log_gemini_request(request_data)
+                request_log_file = None
+                if log_dir:
+                    request_log_file = _log_gemini_request(request_data, log_dir)
                 
                 # For regular text models
                 response = client.models.generate_content(
@@ -1190,7 +1202,8 @@ async def complete(
                 )
                 
                 # Log the response
-                _log_gemini_response(response, request_log_file)
+                if log_dir:
+                    _log_gemini_response(response, log_dir, request_log_file)
 
                 if response.text:
                    print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
@@ -1637,23 +1650,24 @@ def _log_error(info: dict):
     print(f"\nError details written to: {filename}")
 
 
-def _log_gemini_request(request_data):
+def _log_gemini_request(request_data, log_dir):
     """Log Gemini request data to a JSON file.
     
     Args:
         request_data (dict): The request data to log
+        log_dir (str): The base directory for logs
     """
     import json
     import os
     import datetime
     import glob
     
-    # Create gemini directory if it doesn't exist
-    log_dir = os.path.join(os.getcwd(), "gemini")
-    os.makedirs(log_dir, exist_ok=True)
+    # Create gemini directory within log_dir if it doesn't exist
+    gemini_log_dir = os.path.join(log_dir, "gemini")
+    os.makedirs(gemini_log_dir, exist_ok=True)
     
     # Find highest existing log number
-    existing_logs = glob.glob(os.path.join(log_dir, "gemini_request_*.json"))
+    existing_logs = glob.glob(os.path.join(gemini_log_dir, "gemini_request_*.json"))
     if existing_logs:
         last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
         next_num = last_num + 1
@@ -1662,7 +1676,7 @@ def _log_gemini_request(request_data):
         
     # Generate filename with timestamp and incrementing number
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = os.path.join(log_dir, f"gemini_request_{next_num:04d}_{timestamp}.json")
+    filename = os.path.join(gemini_log_dir, f"gemini_request_{next_num:04d}_{timestamp}.json")
     
     # Process content to preserve text but shorten image data
     processed_data = {}
@@ -1728,11 +1742,12 @@ def _log_gemini_request(request_data):
     return filename
 
 
-def _log_gemini_response(response, request_log_file=None):
+def _log_gemini_response(response, log_dir, request_log_file=None):
     """Log Gemini response data to a JSON file.
     
     Args:
         response: The Gemini API response to log
+        log_dir (str): The base directory for logs
         request_log_file: Optional path to the corresponding request log file
     """
     import json
@@ -1740,9 +1755,9 @@ def _log_gemini_response(response, request_log_file=None):
     import datetime
     import glob
     
-    # Create gemini directory if it doesn't exist
-    log_dir = os.path.join(os.getcwd(), "gemini")
-    os.makedirs(log_dir, exist_ok=True)
+    # Create gemini directory within log_dir if it doesn't exist
+    gemini_log_dir = os.path.join(log_dir, "gemini")
+    os.makedirs(gemini_log_dir, exist_ok=True)
     
     # Generate filename with timestamp and matching request number if available
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1909,19 +1924,25 @@ if __name__ == "__main__":
     InteractiveIntermodel().cmdloop()
 
 
-def _log_openai_request(request_data):
-    """Log OpenAI request data to a JSON file."""
+def _log_openai_request(request_data, log_dir):
+    """Log OpenAI request data to a JSON file.
+    
+    Args:
+        request_data (dict): The request data to log.
+        log_dir (str): The base directory for logs.
+    """
     import json
     import os
     import datetime
     import glob
-
-    # Create openai_logs directory if it doesn't exist
-    log_dir = os.path.join(os.getcwd(), "openai_logs")
-    os.makedirs(log_dir, exist_ok=True)
-
+    import re
+    
+    # Create openai subdirectory within log_dir if it doesn't exist
+    openai_log_dir = os.path.join(log_dir, "openai")
+    os.makedirs(openai_log_dir, exist_ok=True)
+    
     # Find highest existing log number
-    existing_logs = glob.glob(os.path.join(log_dir, "openai_request_*.json"))
+    existing_logs = glob.glob(os.path.join(openai_log_dir, "openai_request_*.json"))
     if existing_logs:
         try:
             last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
@@ -1934,32 +1955,19 @@ def _log_openai_request(request_data):
 
     # Generate filename with timestamp and incrementing number
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = os.path.join(log_dir, f"openai_request_{next_num:04d}_{timestamp}.json")
-
-    # Process data for logging (e.g., redact sensitive info if needed)
-    processed_data = {}
-    if "url" in request_data:
-        processed_data["url"] = request_data["url"]
-    if "headers" in request_data:
-        # Redact Authorization header
-        processed_data["headers"] = {
-            k: v if k.lower() != "authorization" else "Bearer [REDACTED]"
-            for k, v in request_data["headers"].items()
-        }
-    if "body" in request_data:
-        processed_data["body"] = request_data["body"] # Body should already be prepared JSON
-
+    filename = os.path.join(openai_log_dir, f"openai_request_{next_num:04d}_{timestamp}.json")
+    
     # Write to file
     try:
         with open(filename, "w", encoding="utf-8") as f:
-            json.dump(processed_data, f, indent=2, ensure_ascii=False)
+            json.dump(request_data, f, indent=2, ensure_ascii=False)
         print(f"[DEBUG] Logged OpenAI request to {filename}", file=sys.stderr)
     except TypeError as e:
          print(f"[ERROR] Failed to serialize OpenAI request data for logging: {e}", file=sys.stderr)
          # Attempt to log with a simple string representation as fallback
          try:
              with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
-                 f.write(str(processed_data))
+                 f.write(str(request_data))
              print(f"[DEBUG] Logged OpenAI request (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
          except Exception as fallback_e:
              print(f"[ERROR] Fallback OpenAI request logging failed: {fallback_e}", file=sys.stderr)
@@ -1969,31 +1977,40 @@ def _log_openai_request(request_data):
     return filename
 
 
-def _log_openai_response(response_data, status_code, request_log_file=None):
-    """Log OpenAI response data to a JSON file."""
+def _log_openai_response(response_data, status_code, log_dir, request_log_file=None):
+    """Log OpenAI response data to a JSON file.
+    
+    Args:
+        response_data (dict or str): The response data (JSON or error string).
+        status_code (int): The HTTP status code of the response.
+        log_dir (str): The base directory for logs.
+        request_log_file: Optional path to the corresponding request log file.
+    """
     import json
     import os
     import datetime
     import glob
+    import re
+    
+    # Create openai subdirectory within log_dir if it doesn't exist
+    openai_log_dir = os.path.join(log_dir, "openai")
+    os.makedirs(openai_log_dir, exist_ok=True)
 
-    # Create openai_logs directory if it doesn't exist
-    log_dir = os.path.join(os.getcwd(), "openai_logs")
-    os.makedirs(log_dir, exist_ok=True)
-
-    # Generate filename
+    # Generate filename with timestamp and matching request number if available
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     if request_log_file:
         # Extract the request number to maintain relationship
-        try:
-            basename = os.path.basename(request_log_file)
-            request_num = basename.split('_')[2].split('.')[0] # Get number part
-            filename = os.path.join(log_dir, f"openai_response_{request_num}_{timestamp}.json")
-        except (IndexError, ValueError):
+        basename = os.path.basename(request_log_file)
+        request_num_match = re.search(r'_(\d+)_', basename)
+        if request_num_match:
+            request_num = request_num_match.group(1) # Extract number part (e.g., 0001)
+            filename = os.path.join(openai_log_dir, f"openai_response_{request_num}_{timestamp}.json")
+        else:
             # Fallback if request filename format is unexpected
-            filename = os.path.join(log_dir, f"openai_response_unknown_{timestamp}.json")
+            filename = os.path.join(openai_log_dir, f"openai_response_unknown_{timestamp}.json")
     else:
         # Find highest existing log number if no request file
-        existing_logs = glob.glob(os.path.join(log_dir, "openai_response_*.json"))
+        existing_logs = glob.glob(os.path.join(openai_log_dir, "openai_response_*.json"))
         if existing_logs:
             try:
                 last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs if os.path.basename(f).startswith('openai_response_') and len(os.path.basename(f).split('_')) > 2])
@@ -2002,7 +2019,7 @@ def _log_openai_response(response_data, status_code, request_log_file=None):
                 next_num = len(existing_logs) + 1 # Fallback numbering
         else:
             next_num = 1
-        filename = os.path.join(log_dir, f"openai_response_{next_num:04d}_{timestamp}.json")
+        filename = os.path.join(openai_log_dir, f"openai_response_{next_num:04d}_{timestamp}.json")
 
     processed_data = {
         "status_code": status_code,
@@ -2026,4 +2043,61 @@ def _log_openai_response(response_data, status_code, request_log_file=None):
          print(f"[ERROR] Failed to log OpenAI response to {filename}: {e}", file=sys.stderr)
 
     return filename
+
+
+def _log_anthropic_request(request_data, log_dir):
+    """Log Anthropic request data to a JSON file."""
+    import json
+    import os
+    import datetime
+    import glob
+
+    # Create anthropic subdirectory within log_dir if it doesn't exist
+    anthropic_log_dir = os.path.join(log_dir, "anthropic")
+    os.makedirs(anthropic_log_dir, exist_ok=True)
+
+    # Find highest existing log number
+    existing_logs = glob.glob(os.path.join(anthropic_log_dir, "anthropic_request_*.json"))
+    if existing_logs:
+        try:
+            last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+             # Handle cases where filename format might be unexpected
+             next_num = len(existing_logs) + 1
+    else:
+        next_num = 1
+
+    # Generate filename with timestamp and incrementing number
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = os.path.join(anthropic_log_dir, f"anthropic_request_{next_num:04d}_{timestamp}.json")
+
+    # Use a custom encoder to handle non-serializable objects (like potentially in messages)
+    class CustomEncoder(json.JSONEncoder):
+        def default(self, obj):
+            # Add handling for specific non-serializable types if encountered
+            return str(obj) # Basic fallback
+
+    # Write to file
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(request_data, f, indent=2, ensure_ascii=False, cls=CustomEncoder)
+        print(f"[DEBUG] Logged Anthropic request to {filename}", file=sys.stderr)
+    except TypeError as e:
+         print(f"[ERROR] Failed to serialize Anthropic request data for logging: {e}", file=sys.stderr)
+         # Attempt to log with a simple string representation as fallback
+         try:
+             with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
+                 f.write(str(request_data))
+             print(f"[DEBUG] Logged Anthropic request (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
+         except Exception as fallback_e:
+             print(f"[ERROR] Fallback Anthropic request logging failed: {fallback_e}", file=sys.stderr)
+    except Exception as e:
+         print(f"[ERROR] Failed to log Anthropic request to {filename}: {e}", file=sys.stderr)
+
+    return filename
+
+# Placeholder for Anthropic response logging - can be implemented similarly if needed
+# def _log_anthropic_response(response_data, status_code, request_log_file=None, log_dir="intermodel_logs"):
+#     pass
 
