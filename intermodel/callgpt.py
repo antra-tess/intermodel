@@ -273,6 +273,7 @@ async def complete(
                 model.startswith("openpipe:") or
                 model.startswith("gpt4") or
                 model.startswith("chatgpt-4o") or
+                model.startswith("gpt-4.1") or
                 model.startswith("grok") or
                 model.startswith("deepseek-reasoner") or
                 model.startswith("deepseek/deepseek-r1") or
@@ -1355,6 +1356,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("gpt-4.5-preview"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
+        elif model.startswith("gpt-4.1"):
+            tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("grok"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("aion"):
@@ -1488,6 +1491,7 @@ def pick_vendor(model, custom_config=None):
         or model.startswith("gpt-4")
         or model.startswith("gpt-3.5-")
         or model.startswith("o1-")
+        or model.startswith("gpt-4.")
     ):
         return "openai"
     elif "j1-" in model or model.startswith("j2-"):
@@ -1524,6 +1528,8 @@ def max_token_length_inner(model):
         return 128_000
     elif model == "gpt-4.5-preview":
         return 128_000  # gpt-4.5-preview has a 128k context window
+    elif model.startswith("gpt-4.1"):
+        return 128_000  # Assume gpt-4.1 has 128k context window like 4.5
     elif model.startswith("gpt-4"):
         return 8193
     elif model.startswith("chatgpt-4o"):
