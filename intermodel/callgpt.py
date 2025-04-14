@@ -372,7 +372,7 @@ async def complete(
             "url": api_base + api_suffix,
             "headers": headers,
             "body": api_arguments
-        })
+        }, log_dir)
 
         async with session.post(
             api_base + api_suffix, headers=headers, json=api_arguments
@@ -380,7 +380,7 @@ async def complete(
             api_response = await response.json()
 
             # Log the response immediately after receiving it
-            _log_openai_response(api_response, response.status, request_log_file)
+            _log_openai_response(api_response, response.status, log_dir, request_log_file)
 
             # Existing error logging for 400 status
             if response.status == 400:
