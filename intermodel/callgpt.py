@@ -241,6 +241,16 @@ async def complete(
         for key, value in dict(api_arguments).items():
             if value is None:
                 del api_arguments[key]
+        # Limit stop sequences for OpenAI
+        if "stop" in api_arguments and isinstance(api_arguments["stop"], list):
+            if len(api_arguments["stop"]) > 4:
+                print(f"[DEBUG] OpenAI only supports up to 4 stop sequences. Truncating from {len(api_arguments['stop'])}.", file=sys.stderr)
+                api_arguments["stop"] = api_arguments["stop"][:4]
+            # Ensure stop sequences are not empty strings, which OpenAI rejects
+            api_arguments["stop"] = [s for s in api_arguments["stop"] if s]
+            if not api_arguments["stop"]: # If list becomes empty after removing empty strings
+                del api_arguments["stop"]
+
         # Helper function to check if force_api_mode is effectively not set
         # Helper functions for specific API modes
         def is_force_api_mode_chat(mode):
