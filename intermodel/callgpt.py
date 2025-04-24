@@ -237,7 +237,7 @@ async def complete(
             "n": num_completions,
             **rest,
         }
-        if not model.startswith("o1"):
+        if not model.startswith("o1") and not model.startswith("o3"):
             api_arguments["max_tokens"] = max_tokens
         # remove None values, OpenAI API doesn't like them
         for key, value in dict(api_arguments).items():
