@@ -245,13 +245,14 @@ async def complete(
                 del api_arguments[key]
         # Limit stop sequences for OpenAI
         if "stop" in api_arguments and isinstance(api_arguments["stop"], list):
-            if len(api_arguments["stop"]) > 4:
-                print(f"[DEBUG] OpenAI only supports up to 4 stop sequences. Truncating from {len(api_arguments['stop'])}.", file=sys.stderr)
-                api_arguments["stop"] = api_arguments["stop"][:4]
-            # Ensure stop sequences are not empty strings, which OpenAI rejects
-            api_arguments["stop"] = [s for s in api_arguments["stop"] if s]
-            if not api_arguments["stop"]: # If list becomes empty after removing empty strings
-                del api_arguments["stop"]
+            if not model.startswith("o3"):
+                if len(api_arguments["stop"]) > 4:
+                    print(f"[DEBUG] OpenAI only supports up to 4 stop sequences. Truncating from {len(api_arguments['stop'])}.", file=sys.stderr)
+                    api_arguments["stop"] = api_arguments["stop"][:4]
+                # Ensure stop sequences are not empty strings, which OpenAI rejects
+                api_arguments["stop"] = [s for s in api_arguments["stop"] if s]
+                if not api_arguments["stop"]: # If list becomes empty after removing empty strings
+                    del api_arguments["stop"]
 
         # Helper function to check if force_api_mode is effectively not set
         # Helper functions for specific API modes
