@@ -253,6 +253,8 @@ async def complete(
                 api_arguments["stop"] = [s for s in api_arguments["stop"] if s]
                 if not api_arguments["stop"]: # If list becomes empty after removing empty strings
                     del api_arguments["stop"]
+            else:
+                del api_arguments["stop"]
 
         # Helper function to check if force_api_mode is effectively not set
         # Helper functions for specific API modes
