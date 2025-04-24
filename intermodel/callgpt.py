@@ -282,7 +282,8 @@ async def complete(
                 model.startswith("aion") or
                 model.startswith("google/gemma-3-27b-it") or
                 model.startswith("DeepHermes-3-Mistral-24B-Preview") or
-                api_base.startswith("https://integrate.api.nvidia.com")
+                api_base.startswith("https://integrate.api.nvidia.com") or
+                model.startswith("o3")
             )
         ) and not model.endswith("-base"):
         
@@ -311,11 +312,12 @@ async def complete(
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
-            if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith("grok"):
+            if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith("grok") or model.startswith("o3"):
                 if "logit_bias" in api_arguments:
                     del api_arguments["logit_bias"]
                 if (
                     model.startswith("o1")
+                    or model.startswith("o3")
                     or model.startswith("chatgpt-4o")
                     or model.startswith("deepseek-reasoner")
                     or model.startswith("deepseek/deepseek-r1")
@@ -1351,7 +1353,7 @@ def tokenize(model: str, string: str) -> List[int]:
         # tiktoken internally caches loaded tokenizers
         if model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
-        elif model.startswith("o1"):
+        elif model.startswith("o1") or model.startswith("o3"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("chatgpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
@@ -1493,6 +1495,7 @@ def pick_vendor(model, custom_config=None):
         or model.startswith("gpt-3.5-")
         or model.startswith("o1-")
         or model.startswith("gpt-4.")
+        or model.startswith("o3")
     ):
         return "openai"
     elif "j1-" in model or model.startswith("j2-"):
@@ -1525,7 +1528,7 @@ def max_token_length_inner(model):
         return 1024
     elif model == "gpt-4-32k":
         return 32769
-    elif model.startswith("o1"):
+    elif model.startswith("o1") or model.startswith("o3"):
         return 128_000
     elif model == "gpt-4.5-preview":
         return 128_000  # gpt-4.5-preview has a 128k context window
