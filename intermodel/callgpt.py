@@ -280,7 +280,7 @@ async def complete(
                 model.startswith("gpt-4.1") or
                 model.startswith("grok") or
                 model.startswith("deepseek-reasoner") or
-                model.startswith("deepseek/deepseek-chat") or
+                model.startswith("deepseek/deepseek-chat")
                 model.startswith("deepseek/deepseek-r1") or
                 model.startswith("deepseek-ai/DeepSeek-R1-Zero") or
                 model.startswith("aion") or
@@ -1357,17 +1357,17 @@ def tokenize(model: str, string: str) -> List[int]:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
     if vendor == "openai" or model == "gpt2" 
-        or model.startswith("claude-3") 
-        or model.startswith("chatgpt-4o") 
-        or model.startswith("grok") 
-        or model.startswith("aion") 
-        or model.startswith("DeepHermes") 
-        or model.startswith("google/gemma-3") 
-        or model.startswith("gemini-") 
-        or model.startswith("deepseek/deepseek-chat") 
-        or model.startswith("deepseek/deepseek-r1") 
-        or model.startswith("deepseek/deepseek-chat")
-        or model.startswith("deepseek-ai/DeepSeek-R1-Zero"):
+                or model.startswith("claude-3") 
+                or model.startswith("chatgpt-4o") 
+                or model.startswith("grok") 
+                or model.startswith("aion") 
+                or model.startswith("DeepHermes") 
+                or model.startswith("google/gemma-3") 
+                or model.startswith("gemini-") 
+                or model.startswith("deepseek/deepseek-chat") 
+                or model.startswith("deepseek/deepseek-r1") 
+                or model.startswith("deepseek/deepseek-chat")
+                or model.startswith("deepseek-ai/DeepSeek-R1-Zero"):
         # tiktoken internally caches loaded tokenizers
         if model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
