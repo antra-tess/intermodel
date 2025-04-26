@@ -1388,6 +1388,7 @@ def tokenize(model: str, string: str) -> List[int]:
         elif model.startswith("gemini-"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         else:
+            print(f"[DEBUG] Getting tokenizer for {model}", file=sys.stderr)
             tokenizer = tiktoken.encoding_for_model(model)
         # encode special tokens as normal
         # XXX: make this an option
@@ -1399,6 +1400,7 @@ def tokenize(model: str, string: str) -> List[int]:
         return tokenize("gpt2", string)
     else:
         try:
+            print(f"[DEBUG] Getting HF tokenizer for {model}", file=sys.stderr)
             tokenizer = get_hf_tokenizer(model)
         except Exception as e:
             message = (
