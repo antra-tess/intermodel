@@ -1359,8 +1359,7 @@ def tokenize(model: str, string: str) -> List[int]:
     if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith(
             "chatgpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
-            "deepseek/deepseek-chat") or model.startswith("deepseek/deepseek-r1") or model.startswith(
-            "deepseek/deepseek-chat") or model.startswith("deepseek-ai/DeepSeek-R1-Zero"):
+            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero"):
         # tiktoken internally caches loaded tokenizers
         if model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
