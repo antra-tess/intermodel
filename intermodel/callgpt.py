@@ -280,7 +280,7 @@ async def complete(
                 model.startswith("gpt-4.1") or
                 model.startswith("grok") or
                 model.startswith("deepseek-reasoner") or
-                model.startswith("deepseek/deepseek-chat")
+                model.startswith("deepseek/deepseek-chat") or
                 model.startswith("deepseek/deepseek-r1") or
                 model.startswith("deepseek-ai/DeepSeek-R1-Zero") or
                 model.startswith("aion") or
