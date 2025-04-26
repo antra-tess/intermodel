@@ -237,7 +237,7 @@ async def complete(
             "n": num_completions,
             **rest,
         }
-        if not model.startswith("o1") and not model.startswith("o3"):
+        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini"):
             api_arguments["max_tokens"] = max_tokens
         # remove None values, OpenAI API doesn't like them
         for key, value in dict(api_arguments).items():
@@ -245,7 +245,7 @@ async def complete(
                 del api_arguments[key]
         # Limit stop sequences for OpenAI
         if "stop" in api_arguments and isinstance(api_arguments["stop"], list):
-            if not model.startswith("o3"):
+            if not model.startswith("o3") and not model.startswith("o4-mini"):
                 if len(api_arguments["stop"]) > 4:
                     print(f"[DEBUG] OpenAI only supports up to 4 stop sequences. Truncating from {len(api_arguments['stop'])}.", file=sys.stderr)
                     api_arguments["stop"] = api_arguments["stop"][:4]
@@ -286,7 +286,8 @@ async def complete(
                 model.startswith("google/gemma-3-27b-it") or
                 model.startswith("DeepHermes-3-Mistral-24B-Preview") or
                 api_base.startswith("https://integrate.api.nvidia.com") or
-                model.startswith("o3")
+                model.startswith("o3") or
+                model.startswith("o4-mini")
             )
         ) and not model.endswith("-base"):
         
@@ -315,12 +316,13 @@ async def complete(
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
-            if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith("grok") or model.startswith("o3"):
+            if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith("grok") or model.startswith("o3") or model.startswith("o4-mini"):
                 if "logit_bias" in api_arguments:
                     del api_arguments["logit_bias"]
                 if (
                     model.startswith("o1")
                     or model.startswith("o3")
+                    or model.startswith("o4-mini")
                     or model.startswith("chatgpt-4o")
                     or model.startswith("deepseek-reasoner")
                     or model.startswith("deepseek/deepseek-r1")
@@ -1356,7 +1358,7 @@ def tokenize(model: str, string: str) -> List[int]:
         # tiktoken internally caches loaded tokenizers
         if model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
-        elif model.startswith("o1") or model.startswith("o3"):
+        elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("chatgpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
@@ -1499,6 +1501,7 @@ def pick_vendor(model, custom_config=None):
         or model.startswith("o1-")
         or model.startswith("gpt-4.")
         or model.startswith("o3")
+        or model.startswith("o4-mini")
     ):
         return "openai"
     elif "j1-" in model or model.startswith("j2-"):
@@ -1531,7 +1534,7 @@ def max_token_length_inner(model):
         return 1024
     elif model == "gpt-4-32k":
         return 32769
-    elif model.startswith("o1") or model.startswith("o3"):
+    elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini"):
         return 128_000
     elif model == "gpt-4.5-preview":
         return 128_000  # gpt-4.5-preview has a 128k context window
