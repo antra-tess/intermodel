@@ -1380,6 +1380,12 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("DeepHermes-3-Mistral-24B-Preview"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
+        elif model.startswith("deepseek/deepseek-chat"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")
+        elif model.startswith("deepseek/deepseek-r1"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")
+        elif model.startswith("deepseek-ai/DeepSeek-R1-Zero"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("gemini-"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         else:
