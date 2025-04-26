@@ -1361,6 +1361,7 @@ def tokenize(model: str, string: str) -> List[int]:
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
             "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero"):
         # tiktoken internally caches loaded tokenizers
+        print(f"[DEBUG] Tokenizing {model}", file=sys.stderr)
         if model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini"):
