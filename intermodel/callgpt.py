@@ -1390,6 +1390,7 @@ def tokenize(model: str, string: str) -> List[int]:
         else:
             print(f"[DEBUG] Getting tokenizer for {model}", file=sys.stderr)
             tokenizer = tiktoken.encoding_for_model(model)
+            print(f"[DEBUG] Tokenizer: {tokenizer}", file=sys.stderr)
         # encode special tokens as normal
         # XXX: make this an option
         return tokenizer.encode(string, allowed_special="all")
