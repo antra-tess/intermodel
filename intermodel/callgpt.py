@@ -1356,6 +1356,7 @@ def tokenize(model: str, string: str) -> List[int]:
     except NotImplementedError:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
+    print(f"[DEBUG] Tokenizing {model} with vendor {vendor}", file=sys.stderr)
     if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith(
             "chatgpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
