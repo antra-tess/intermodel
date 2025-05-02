@@ -331,6 +331,7 @@ async def complete(
                     or model.startswith("deepseek-ai/DeepSeek-R1-Zero")
                     or model.startswith("aion")
                     or model.startswith("deepseek/deepseek-chat")
+                    or model.startswith("tngtech/deepseek")
                 ):
                     if api_base.startswith("https://openrouter.ai"):
                         reasoning_content_key = "reasoning"
