@@ -1612,6 +1612,8 @@ def max_token_length_inner(model):
         return 2049
     elif model == "google/gemma-3-27b-it":
         return 127000
+    elif model.startswith("deepseek"):
+        return 127000
     elif model == "DeepHermes-3-Mistral-24B-Preview":
         return 31000
     elif model.startswith("gemini-"):
