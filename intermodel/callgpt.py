@@ -283,6 +283,7 @@ async def complete(
                 model.startswith("deepseek/deepseek-chat") or
                 model.startswith("deepseek/deepseek-r1") or
                 model.startswith("deepseek-ai/DeepSeek-R1-Zero") or
+                model.startswith("tngtech/deepseek") or
                 model.startswith("aion") or
                 model.startswith("google/gemma-3-27b-it") or
                 model.startswith("DeepHermes-3-Mistral-24B-Preview") or
@@ -1360,7 +1361,7 @@ def tokenize(model: str, string: str) -> List[int]:
     if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith(
             "chatgpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
-            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero"):
+            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek"):
         # tiktoken internally caches loaded tokenizers
         print(f"[DEBUG] Tokenizing {model}", file=sys.stderr)
         if model.startswith("claude-3"):
@@ -1382,6 +1383,8 @@ def tokenize(model: str, string: str) -> List[int]:
         elif model.startswith("DeepHermes-3-Mistral-24B-Preview"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("deepseek"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")
+        elif model.startswith("tngtech/deepseek"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("deepseek/deepseek-r1"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
@@ -1613,6 +1616,8 @@ def max_token_length_inner(model):
     elif model == "google/gemma-3-27b-it":
         return 127000
     elif model.startswith("deepseek"):
+        return 127000
+    elif model.startswith("tngtech/deepseek"):
         return 127000
     elif model == "DeepHermes-3-Mistral-24B-Preview":
         return 31000
