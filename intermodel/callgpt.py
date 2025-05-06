@@ -254,7 +254,6 @@ async def complete(
                 "model": model,
                 "prompt": actual_prompt_for_image_gen,
                 "n": num_completions if num_completions is not None else 1,
-                "response_format": "b64_json",
                 "size": kwargs.get("size", "1024x1024"),  # Default size, overridable
                 "user": hashed_user_id,
             }
@@ -263,6 +262,10 @@ async def complete(
                 if "quality" in kwargs: api_arguments_img["quality"] = kwargs["quality"]
                 if "style" in kwargs: api_arguments_img["style"] = kwargs["style"]
             
+            # Add response_format only for specific DALL-E models that support it
+            if model == "dall-e-2" or model == "dall-e-3":
+                api_arguments_img["response_format"] = "b64_json"
+
             # Remove None values
             api_arguments_img = {k: v for k, v in api_arguments_img.items() if v is not None}
 
