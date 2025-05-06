@@ -1615,6 +1615,8 @@ def pick_vendor(model, custom_config=None):
         or model.startswith("gpt-4.")
         or model.startswith("o3")
         or model.startswith("o4-mini")
+        or model.startswith("dall-e") # Added for DALL-E models
+        or model == "gpt-image-1"      # Added for gpt-image-1
     ):
         return "openai"
     elif "j1-" in model or model.startswith("j2-"):
@@ -1719,6 +1721,12 @@ def max_token_length_inner(model):
         if model == "gemini-2.0-flash-exp":
             return 127000  # Image generation model has shorter context
         return 127000  # Standard Gemini models have 32k context
+    elif model == "dall-e-3" or model == "gpt-image-1":
+        # DALL-E 3 / gpt-image-1 prompt limit is up to 4000 characters. Approx 4 chars/token => 1000 tokens
+        return 100000
+    elif model == "dall-e-2":
+        # DALL-E 2 prompt limit is 1000 characters. Approx 4 chars/token => 250 tokens
+        return 250
     else:
         try:
             import huggingface_hub
