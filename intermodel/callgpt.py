@@ -1729,7 +1729,7 @@ def max_token_length_inner(model):
         return 127000  # Standard Gemini models have 32k context
     elif model == "dall-e-3" or model == "gpt-image-1":
         # DALL-E 3 / gpt-image-1 prompt limit is up to 4000 characters. Approx 4 chars/token => 1000 tokens
-        return 100000
+        return 10000
     elif model == "dall-e-2":
         # DALL-E 2 prompt limit is 1000 characters. Approx 4 chars/token => 250 tokens
         return 250
