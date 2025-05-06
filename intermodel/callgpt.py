@@ -296,7 +296,7 @@ async def complete(
                 "completions": [
                     {
                         "text": img_item.get("revised_prompt", ""),  # DALL-E 3 can return revised_prompt
-                        "image_data_b64": img_item.get("b64_json"),
+                        "image_data": img_item.get("b64_json"),
                         "finish_reason": {"reason": "stop"}, # Assuming success
                     }
                     for img_item in api_response.get("data", [])
