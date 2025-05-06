@@ -213,7 +213,19 @@ async def complete(
 
         reasoning_content_key = None
 
-        # Determine if this is an image generation model first
+        # Initialize common OpenAI variables first
+        if "openai_api_key" not in kwargs:
+            kwargs["openai_api_key"] = os.getenv("OPENAI_API_KEY")
+        
+        rest = dict(kwargs) # Create a copy to pop from for api_base etc.
+        headers = {
+            "Content-Type": "application/json",
+        }
+        if (api_key := rest.pop("openai_api_key", None)) is not None:
+            headers["Authorization"] = f"Bearer {api_key}"
+        api_base = rest.pop("api_base", "https://api.openai.com/v1")
+
+        # Determine if this is an image generation model
         is_image_generation_model = model.startswith("dall-e") or model == "gpt-image-1"
 
         if is_image_generation_model:
@@ -294,15 +306,6 @@ async def complete(
                 },
             }
 
-        if "openai_api_key" not in kwargs:
-            kwargs["openai_api_key"] = os.getenv("OPENAI_API_KEY")
-        rest = dict(kwargs)
-        headers = {
-            "Content-Type": "application/json",
-        }
-        if (api_key := rest.pop("openai_api_key", None)) is not None:
-            headers["Authorization"] = f"Bearer {api_key}"
-        api_base = rest.pop("api_base", "https://api.openai.com/v1")
         if model.startswith("o1"):
             stop = []
         api_arguments = {
