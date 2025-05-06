@@ -213,6 +213,87 @@ async def complete(
 
         reasoning_content_key = None
 
+        # Determine if this is an image generation model first
+        is_image_generation_model = model.startswith("dall-e") or model == "gpt-image-1"
+
+        if is_image_generation_model:
+            api_suffix = "/images/generations"
+
+            # Construct the text prompt for image generation
+            actual_prompt_for_image_gen = ""
+            if messages:  # messages kwarg from complete()
+                prompt_parts = []
+                for msg_obj in messages:
+                    content = msg_obj.get("content")
+                    if isinstance(content, str):
+                        prompt_parts.append(content)
+                    elif isinstance(content, list):  # OpenAI multimodal message format
+                        for part in content:
+                            if part.get("type") == "text":
+                                prompt_parts.append(part.get("text", ""))
+                actual_prompt_for_image_gen = "\\n".join(prompt_parts).strip()
+            elif prompt:  # prompt string kwarg from complete()
+                actual_prompt_for_image_gen = prompt
+            
+            if not actual_prompt_for_image_gen:
+                raise ValueError("A non-empty prompt is required for OpenAI image generation.")
+
+            api_arguments_img = {
+                "model": model,
+                "prompt": actual_prompt_for_image_gen,
+                "n": num_completions if num_completions is not None else 1,
+                "response_format": "b64_json",
+                "size": kwargs.get("size", "1024x1024"),  # Default size, overridable
+                "user": hashed_user_id,
+            }
+            # Add DALL-E 3 specific parameters if provided
+            if model == "dall-e-3":
+                if "quality" in kwargs: api_arguments_img["quality"] = kwargs["quality"]
+                if "style" in kwargs: api_arguments_img["style"] = kwargs["style"]
+            
+            # Remove None values
+            api_arguments_img = {k: v for k, v in api_arguments_img.items() if v is not None}
+
+            request_log_file = _log_openai_request({
+                "url": api_base + api_suffix,
+                "headers": headers,
+                "body": api_arguments_img
+            }, log_dir)
+
+            async with session.post(api_base + api_suffix, headers=headers, json=api_arguments_img) as response:
+                api_response = await response.json()
+                _log_openai_response(api_response, response.status, log_dir, request_log_file)
+                if response.status >= 400:
+                    error_info = {
+                        "request": {
+                            "url": api_base + api_suffix,
+                            "headers": {k: v if k.lower() != "authorization" else "Bearer [REDACTED]" for k, v in headers.items()},
+                            "body": api_arguments_img
+                        },
+                        "response": api_response,
+                        "status_code": response.status
+                    }
+                    _log_error(error_info)
+                response.raise_for_status()
+            
+            return {
+                "prompt": {"text": actual_prompt_for_image_gen},
+                "completions": [
+                    {
+                        "text": img_item.get("revised_prompt", ""),  # DALL-E 3 can return revised_prompt
+                        "image_data_b64": img_item.get("b64_json"),
+                        "finish_reason": {"reason": "stop"}, # Assuming success
+                    }
+                    for img_item in api_response.get("data", [])
+                ],
+                "model": model, # Actual model used
+                "id": str(uuid.uuid4()), # Image API doesn't provide a top-level UUID, use created timestamp or new UUID
+                "created": api_response.get("created"), # Timestamp from response
+                "usage": { # Image API doesn't provide token usage
+                    "vendor": vendor,
+                },
+            }
+
         if "openai_api_key" not in kwargs:
             kwargs["openai_api_key"] = os.getenv("OPENAI_API_KEY")
         rest = dict(kwargs)
