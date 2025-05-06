@@ -247,6 +247,11 @@ async def complete(
             elif prompt:  # prompt string kwarg from complete()
                 actual_prompt_for_image_gen = prompt
             
+            # Truncate prompt for gpt-image-1 if it exceeds 32000 characters
+            if model == "gpt-image-1" and len(actual_prompt_for_image_gen) > 32000:
+                print(f"[DEBUG] Truncating gpt-image-1 prompt from {len(actual_prompt_for_image_gen)} to 32000 characters.", file=sys.stderr)
+                actual_prompt_for_image_gen = actual_prompt_for_image_gen[-32000:]
+
             if not actual_prompt_for_image_gen:
                 raise ValueError("A non-empty prompt is required for OpenAI image generation.")
 
