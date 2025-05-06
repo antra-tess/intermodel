@@ -1443,7 +1443,7 @@ def tokenize(model: str, string: str) -> List[int]:
     if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith(
             "chatgpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
-            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek"):
+            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1"):
         # tiktoken internally caches loaded tokenizers
         print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
 
@@ -1452,7 +1452,7 @@ def tokenize(model: str, string: str) -> List[int]:
             # Prompts for image models are text; use a common/suitable tokenizer.
             # o200k_base is used by gpt-4o.
             print(f"[DEBUG] Using o200k_base tokenizer for OpenAI image model prompt: {model}", file=sys.stderr)
-            tokenizer = tiktoken.get_encoding("o200k_base")
+            tokenizer = tiktoken.get_encoding("gpt2")
         elif model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini"):
