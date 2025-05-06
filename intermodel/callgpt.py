@@ -1445,8 +1445,15 @@ def tokenize(model: str, string: str) -> List[int]:
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
             "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek"):
         # tiktoken internally caches loaded tokenizers
-        print(f"[DEBUG] Tokenizing {model}", file=sys.stderr)
-        if model.startswith("claude-3"):
+        print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
+
+        # Handle OpenAI image models specifically for their text prompts
+        if model.startswith("dall-e") or model == "gpt-image-1":
+            # Prompts for image models are text; use a common/suitable tokenizer.
+            # o200k_base is used by gpt-4o.
+            print(f"[DEBUG] Using o200k_base tokenizer for OpenAI image model prompt: {model}", file=sys.stderr)
+            tokenizer = tiktoken.get_encoding("o200k_base")
+        elif model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
@@ -1547,7 +1554,12 @@ def untokenize(model: str, token_ids: List[int]) -> str:
         import tiktoken
 
         # tiktoken internally caches loaded tokenizers
-        tokenizer = tiktoken.encoding_for_model(model)
+        # Handle OpenAI image models specifically for their text prompts
+        if model.startswith("dall-e") or model == "gpt-image-1":
+            print(f"[DEBUG] Using o200k_base tokenizer for OpenAI image model prompt (untokenize): {model}", file=sys.stderr)
+            tokenizer = tiktoken.get_encoding("o200k_base")
+        else:
+            tokenizer = tiktoken.encoding_for_model(model)
         return tokenizer.decode(token_ids)
     elif vendor == "anthropic":
         import anthropic
