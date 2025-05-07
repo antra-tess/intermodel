@@ -1465,6 +1465,8 @@ def tokenize(model: str, string: str) -> List[int]:
         if model.startswith("dall-e") or model == "gpt-image-1":
             # Prompts for image models are text; use a common/suitable tokenizer.
             tokenizer = tiktoken.get_encoding("gpt2")
+        elif "deployedModel" in model: # Added for RunPod deployed models
+            tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini"):
@@ -1629,6 +1631,7 @@ def pick_vendor(model, custom_config=None):
         or model.startswith("o4-mini")
         or model.startswith("dall-e") # Added for DALL-E models
         or model == "gpt-image-1"      # Added for gpt-image-1
+        or "deployedModel" in model    # Added for RunPod serverless models
     ):
         return "openai"
     elif "j1-" in model or model.startswith("j2-"):
@@ -1733,9 +1736,11 @@ def max_token_length_inner(model):
         if model == "gemini-2.0-flash-exp":
             return 127000  # Image generation model has shorter context
         return 127000  # Standard Gemini models have 32k context
+    elif "deployedModel" in model: # Added for RunPod deployed models
+        return 64000
     elif model == "dall-e-3" or model == "gpt-image-1":
         # DALL-E 3 / gpt-image-1 prompt limit is up to 4000 characters. Approx 4 chars/token => 1000 tokens
-        return 6000
+        return 6000 # User updated this value
     elif model == "dall-e-2":
         # DALL-E 2 prompt limit is 1000 characters. Approx 4 chars/token => 250 tokens
         return 250
