@@ -262,7 +262,7 @@ async def complete(
                 "size": kwargs.get("size", "1024x1024"),  # Default size, overridable
                 "user": hashed_user_id,
                 "moderation": "low",
-                "quality": "low",
+                "quality": "auto",
 
             }
             # Add DALL-E 3 specific parameters if provided
