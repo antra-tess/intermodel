@@ -261,6 +261,9 @@ async def complete(
                 "n": num_completions if num_completions is not None else 1,
                 "size": kwargs.get("size", "1024x1024"),  # Default size, overridable
                 "user": hashed_user_id,
+                "moderation": "low",
+                "quality": "low",
+
             }
             # Add DALL-E 3 specific parameters if provided
             if model == "dall-e-3":
@@ -1461,8 +1464,6 @@ def tokenize(model: str, string: str) -> List[int]:
         # Handle OpenAI image models specifically for their text prompts
         if model.startswith("dall-e") or model == "gpt-image-1":
             # Prompts for image models are text; use a common/suitable tokenizer.
-            # o200k_base is used by gpt-4o.
-            print(f"[DEBUG] Using o200k_base tokenizer for OpenAI image model prompt: {model}", file=sys.stderr)
             tokenizer = tiktoken.get_encoding("gpt2")
         elif model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
@@ -1568,7 +1569,7 @@ def untokenize(model: str, token_ids: List[int]) -> str:
         # Handle OpenAI image models specifically for their text prompts
         if model.startswith("dall-e") or model == "gpt-image-1":
             print(f"[DEBUG] Using o200k_base tokenizer for OpenAI image model prompt (untokenize): {model}", file=sys.stderr)
-            tokenizer = tiktoken.get_encoding("o200k_base")
+            tokenizer = tiktoken.get_encoding("gpt2")
         else:
             tokenizer = tiktoken.encoding_for_model(model)
         return tokenizer.decode(token_ids)
@@ -1734,7 +1735,7 @@ def max_token_length_inner(model):
         return 127000  # Standard Gemini models have 32k context
     elif model == "dall-e-3" or model == "gpt-image-1":
         # DALL-E 3 / gpt-image-1 prompt limit is up to 4000 characters. Approx 4 chars/token => 1000 tokens
-        return 10000
+        return 6000
     elif model == "dall-e-2":
         # DALL-E 2 prompt limit is 1000 characters. Approx 4 chars/token => 250 tokens
         return 250
