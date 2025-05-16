@@ -1493,6 +1493,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("deepseek-ai/DeepSeek-R1-Zero"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
+        elif model.startswith("meta-llama/llama-3.1-405b"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("gemini-"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         else:
