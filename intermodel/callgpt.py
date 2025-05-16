@@ -538,6 +538,7 @@ async def complete(
                 },
             }
         except KeyError:
+            import json
             print(f"API Response: {api_response}")
             if "error" in api_response:
                 raise ValueError(
