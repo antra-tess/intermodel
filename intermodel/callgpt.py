@@ -1454,13 +1454,13 @@ def tokenize(model: str, string: str) -> List[int]:
     except NotImplementedError:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
-    print(f"[DEBUG] Tokenizing {model} with vendor {vendor}", file=sys.stderr)
+    #print(f"[DEBUG] Tokenizing {model} with vendor {vendor}", file=sys.stderr)
     if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith(
             "chatgpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
             "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1"):
         # tiktoken internally caches loaded tokenizers
-        print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
+        #print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
 
         # Handle OpenAI image models specifically for their text prompts
         if model.startswith("dall-e") or model == "gpt-image-1":
