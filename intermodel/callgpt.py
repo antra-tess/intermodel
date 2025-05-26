@@ -18,6 +18,8 @@ from PIL import Image
 import datetime
 import requests
 from mimetypes import guess_type
+import time
+from typing import Dict, Tuple
 
 import aiohttp
 import tenacity
@@ -30,6 +32,100 @@ from dotenv import load_dotenv
 from intermodel.hf_token import get_hf_tokenizer, get_hf_auth_token
 
 load_dotenv()
+
+# URL validation cache: stores (is_valid, last_checked_timestamp) for each URL
+_url_validation_cache: Dict[str, Tuple[bool, float]] = {}
+_URL_CACHE_DURATION = 3600  # 1 hour in seconds
+
+async def validate_image_url(url: str, session: Optional[aiohttp.ClientSession] = None) -> bool:
+    """Validate that an image URL is accessible and returns a valid image.
+    
+    Args:
+        url: The URL to validate
+        session: Optional aiohttp session to reuse
+        
+    Returns:
+        bool: True if the URL is valid and accessible, False otherwise
+    """
+    # Check cache first
+    current_time = time.time()
+    if url in _url_validation_cache:
+        is_valid, last_checked = _url_validation_cache[url]
+        if current_time - last_checked < _URL_CACHE_DURATION:
+            print(f"[DEBUG] URL validation cache hit for {url[:100]}{'...' if len(url) > 100 else ''}: {'valid' if is_valid else 'invalid'}", file=sys.stderr)
+            return is_valid
+    
+    # Validate the URL
+    print(f"[DEBUG] Validating image URL: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
+    
+    try:
+        # Create session if not provided
+        if session is None:
+            async with aiohttp.ClientSession() as new_session:
+                return await _validate_url_with_session(url, new_session, current_time)
+        else:
+            return await _validate_url_with_session(url, session, current_time)
+    except Exception as e:
+        print(f"[DEBUG] Error validating URL {url[:100]}{'...' if len(url) > 100 else ''}: {str(e)}", file=sys.stderr)
+        _url_validation_cache[url] = (False, current_time)
+        return False
+
+async def _validate_url_with_session(url: str, session: aiohttp.ClientSession, current_time: float) -> bool:
+    """Internal function to validate URL with a given session."""
+    try:
+        # Use HEAD request first to check if resource exists without downloading
+        async with session.head(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            if response.status != 200:
+                # Try GET if HEAD fails (some servers don't support HEAD)
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as get_response:
+                    if get_response.status != 200:
+                        print(f"[DEBUG] URL returned status {get_response.status}", file=sys.stderr)
+                        _url_validation_cache[url] = (False, current_time)
+                        return False
+                    
+                    # Check content type
+                    content_type = get_response.headers.get('Content-Type', '').lower()
+                    if not any(img_type in content_type for img_type in ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/']):
+                        print(f"[DEBUG] URL content type '{content_type}' is not an image", file=sys.stderr)
+                        _url_validation_cache[url] = (False, current_time)
+                        return False
+                    
+                    # Check content length if available
+                    content_length = get_response.headers.get('Content-Length')
+                    if content_length:
+                        size_mb = int(content_length) / (1024 * 1024)
+                        if size_mb > 5:
+                            print(f"[DEBUG] Image size {size_mb:.2f}MB exceeds 5MB limit", file=sys.stderr)
+                            _url_validation_cache[url] = (False, current_time)
+                            return False
+            else:
+                # HEAD request succeeded, check headers
+                content_type = response.headers.get('Content-Type', '').lower()
+                if not any(img_type in content_type for img_type in ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/']):
+                    print(f"[DEBUG] URL content type '{content_type}' is not an image", file=sys.stderr)
+                    _url_validation_cache[url] = (False, current_time)
+                    return False
+                
+                content_length = response.headers.get('Content-Length')
+                if content_length:
+                    size_mb = int(content_length) / (1024 * 1024)
+                    if size_mb > 5:
+                        print(f"[DEBUG] Image size {size_mb:.2f}MB exceeds 5MB limit", file=sys.stderr)
+                        _url_validation_cache[url] = (False, current_time)
+                        return False
+        
+        print(f"[DEBUG] URL validation successful", file=sys.stderr)
+        _url_validation_cache[url] = (True, current_time)
+        return True
+        
+    except asyncio.TimeoutError:
+        print(f"[DEBUG] URL validation timed out", file=sys.stderr)
+        _url_validation_cache[url] = (False, current_time)
+        return False
+    except Exception as e:
+        print(f"[DEBUG] URL validation error: {str(e)}", file=sys.stderr)
+        _url_validation_cache[url] = (False, current_time)
+        return False
 
 def guess_mime_type(url: str) -> Optional[str]:
     """Get the MIME type from a URL or file path.
@@ -102,11 +198,12 @@ def convert_to_gemini_format(processed_msg: ProcessedMessage) -> "types.Content"
     
     return types.Content(parts=parts, role=gemini_role)
 
-def convert_to_anthropic_format(processed_msg: ProcessedMessage) -> dict:
+async def convert_to_anthropic_format(processed_msg: ProcessedMessage, session: Optional[aiohttp.ClientSession] = None) -> dict:
     """Convert the intermediate message format to Anthropic's API format.
     
     Args:
         processed_msg: A ProcessedMessage object containing text and/or images
+        session: Optional aiohttp session for URL validation
         
     Returns:
         dict: Message formatted for Anthropic's API
@@ -117,6 +214,7 @@ def convert_to_anthropic_format(processed_msg: ProcessedMessage) -> dict:
         - Maximum 100 images per API request
         - Maximum 5MB per image
         - If image is larger than 8000x8000px (or 2000x2000px for >20 images), it will be rejected
+        - URLs are validated before being sent to ensure they're accessible
     """
     content = []
     
@@ -127,8 +225,19 @@ def convert_to_anthropic_format(processed_msg: ProcessedMessage) -> dict:
                 "text": part.content
             })
         elif part.type == "image":
-            # For URLs, use the URL source type
+            # For URLs, validate and use the URL source type
             if part.content.startswith(('http://', 'https://')):
+                # Validate the URL is accessible
+                is_valid = await validate_image_url(part.content, session)
+                if not is_valid:
+                    print(f"[WARNING] Skipping invalid/inaccessible image URL: {part.content[:100]}{'...' if len(part.content) > 100 else ''}", file=sys.stderr)
+                    # Add a text message explaining the skipped image
+                    content.append({
+                        "type": "text",
+                        "text": f"[Image URL was not accessible and has been skipped]"
+                    })
+                    continue
+                
                 content.append({
                     "type": "image",
                     "source": {
@@ -804,7 +913,10 @@ async def complete(
                             parts=[MessagePart(type="text", content=text_parts_combined)]
                         ))
 
-                processed_messages = [convert_to_anthropic_format(msg) for msg in processed_messages]
+                # Convert all processed messages to Anthropic format with URL validation
+                processed_messages = await asyncio.gather(*[
+                    convert_to_anthropic_format(msg, session) for msg in processed_messages
+                ])
 
                 messages = messages + processed_messages
 
@@ -1382,6 +1494,53 @@ def download_and_process_image(url: str) -> bytes:
     return image_data
 
 
+def download_and_encode_image(url: str, skip_gifs: bool = False) -> Tuple[Optional[str], Optional[str]]:
+    """Download image and encode it as base64.
+    
+    Args:
+        url (str): URL of the image to download
+        skip_gifs (bool): Whether to skip GIF images
+        
+    Returns:
+        Tuple[Optional[str], Optional[str]]: (base64_data, mime_type) or (None, None) if skipped
+    """
+    import requests
+    import sys
+    import base64
+
+    print(f"[DEBUG] Downloading and encoding image from: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
+    
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        image_data = response.content
+        mime_type = response.headers.get("content-type") or guess_mime_type(url)
+        
+        # Skip GIFs if requested
+        if skip_gifs and mime_type and mime_type.lower() == "image/gif":
+            print(f"[DEBUG] Skipping GIF image as requested", file=sys.stderr)
+            return None, None
+            
+        # Check image size
+        size_mb = len(image_data) / (1024 * 1024)
+        if size_mb > 5:
+            print(f"[WARNING] Image size {size_mb:.2f}MB exceeds 5MB limit, skipping", file=sys.stderr)
+            return None, None
+            
+        # Encode to base64
+        base64_data = base64.b64encode(image_data).decode('utf-8')
+        print(f"[DEBUG] Encoded image: {len(image_data)} bytes, mime type: {mime_type}", file=sys.stderr)
+        
+        return base64_data, mime_type
+        
+    except requests.RequestException as e:
+        print(f"[ERROR] Failed to download image: {str(e)}", file=sys.stderr)
+        raise
+    except Exception as e:
+        print(f"[ERROR] Failed to encode image: {str(e)}", file=sys.stderr)
+        raise
+
+
 def process_image_message(content_string, skip_gifs=False, role="user"):
     """Process a message that may contain image URLs markers.
     
@@ -1438,7 +1597,6 @@ def process_image_message(content_string, skip_gifs=False, role="user"):
         gemini_role = 'user'
     
     return {"role": gemini_role, "content": content}
-
 
 
 def complete_sync(*args, **kwargs):
@@ -2272,4 +2430,11 @@ def _log_anthropic_request(request_data, log_dir):
 # Placeholder for Anthropic response logging - can be implemented similarly if needed
 # def _log_anthropic_response(response_data, status_code, request_log_file=None, log_dir="intermodel_logs"):
 #     pass
+
+
+def clear_url_validation_cache():
+    """Clear the URL validation cache, forcing re-validation of all URLs."""
+    global _url_validation_cache
+    _url_validation_cache.clear()
+    print(f"[DEBUG] URL validation cache cleared", file=sys.stderr)
 
