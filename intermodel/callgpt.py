@@ -979,6 +979,11 @@ async def complete(
                 stop_sequences=stop or list(),
                 **kwargs,
             )
+
+        # Log the response
+        if log_dir:
+            _log_anthropic_response(response, log_dir, request_log_file)
+
         if response.stop_reason == "stop_sequence":
             finish_reason = "stop"
         elif response.stop_reason == "max_tokens":
@@ -2430,6 +2435,96 @@ def _log_anthropic_request(request_data, log_dir):
 # Placeholder for Anthropic response logging - can be implemented similarly if needed
 # def _log_anthropic_response(response_data, status_code, request_log_file=None, log_dir="intermodel_logs"):
 #     pass
+
+def _log_anthropic_response(response_data, log_dir, request_log_file=None):
+    """Log Anthropic response data to a JSON file.
+    
+    Args:
+        response_data (dict or str): The response data (JSON or error string).
+        log_dir (str): The base directory for logs.
+        request_log_file: Optional path to the corresponding request log file.
+    """
+    import json
+    import os
+    import datetime
+    import glob
+    import re
+    
+    # Create anthropic subdirectory within log_dir if it doesn't exist
+    anthropic_log_dir = os.path.join(log_dir, "anthropic")
+    os.makedirs(anthropic_log_dir, exist_ok=True)
+
+    # Generate filename with timestamp and matching request number if available
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    if request_log_file:
+        # Extract the request number to maintain relationship
+        basename = os.path.basename(request_log_file)
+        request_num_match = re.search(r'_(\d+)_', basename)
+        if request_num_match:
+            request_num = request_num_match.group(1) # Extract number part (e.g., 0001)
+            filename = os.path.join(anthropic_log_dir, f"anthropic_response_{request_num}_{timestamp}.json")
+        else:
+            # Fallback if request filename format is unexpected
+            filename = os.path.join(anthropic_log_dir, f"anthropic_response_unknown_{timestamp}.json")
+    else:
+        # Find highest existing log number if no request file
+        existing_logs = glob.glob(os.path.join(anthropic_log_dir, "anthropic_response_*.json"))
+        if existing_logs:
+            try:
+                last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs if os.path.basename(f).startswith('anthropic_response_') and len(os.path.basename(f).split('_')) > 2])
+                next_num = last_num + 1
+            except (IndexError, ValueError):
+                next_num = len(existing_logs) + 1 # Fallback numbering
+        else:
+            next_num = 1
+        filename = os.path.join(anthropic_log_dir, f"anthropic_response_{next_num:04d}_{timestamp}.json")
+
+    # Convert Anthropic response object to a serializable dictionary
+    processed_data = {}
+    try:
+        # Get all available attributes from the response object
+        all_attrs = dir(response_data)
+        for attr in all_attrs:
+            # Skip private/internal attributes and methods
+            if attr.startswith('_') or callable(getattr(response_data, attr)):
+                continue
+            
+            try:
+                attr_value = getattr(response_data, attr)
+                # Special handling for content which might be a list of objects
+                if attr == 'content' and isinstance(attr_value, list):
+                    processed_data[attr] = []
+                    for item in attr_value:
+                        item_dict = {}
+                        for item_attr in dir(item):
+                            if not item_attr.startswith('_') and not callable(getattr(item, item_attr)):
+                                item_dict[item_attr] = str(getattr(item, item_attr)) # Convert to string for simplicity
+                        processed_data[attr].append(item_dict)
+                else:
+                    processed_data[attr] = str(attr_value)  # Convert to string for simplicity
+            except Exception as e:
+                processed_data[f"{attr}_error"] = f"Error accessing {attr}: {str(e)}"
+    except Exception as e:
+        processed_data["_raw_response_data"] = str(response_data) # Fallback to string representation
+        processed_data["_processing_error"] = str(e)
+
+    # Write to file
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(processed_data, f, indent=2, ensure_ascii=False)
+        print(f"[DEBUG] Logged Anthropic response to {filename}", file=sys.stderr)
+    except TypeError as e:
+         print(f"[ERROR] Failed to serialize Anthropic response data for logging: {e}", file=sys.stderr)
+         try:
+             with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
+                 f.write(str(processed_data))
+             print(f"[DEBUG] Logged Anthropic response (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
+         except Exception as fallback_e:
+              print(f"[ERROR] Fallback Anthropic response logging failed: {fallback_e}", file=sys.stderr)
+    except Exception as e:
+         print(f"[ERROR] Failed to log Anthropic response to {filename}: {e}", file=sys.stderr)
+
+    return filename
 
 
 def clear_url_validation_cache():
