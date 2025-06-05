@@ -288,10 +288,13 @@ async def complete(
     logit_bias=None,
     vendor=None,
     vendor_config=None,
+    voice: Optional[str] = None,
     force_api_mode=None,
     log_dir="intermodel_logs",  # Add log_dir parameter with a default
     **kwargs,
 ):
+    modalities = kwargs.pop("modalities", None)
+    audio_settings = kwargs.pop("audio_settings", None)
     message_history_format = kwargs.get("message_history_format", None)
     messages = kwargs.get("messages", None)
     name = kwargs.get("name", None)
@@ -443,6 +446,19 @@ async def complete(
         }
         if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini"):
             api_arguments["max_tokens"] = max_tokens
+
+        if modalities:
+            api_arguments["modalities"] = modalities
+
+        final_audio_settings = audio_settings or {}
+        if modalities and "audio" in modalities:
+            if voice:
+                final_audio_settings["voice"] = voice
+            elif "voice" not in final_audio_settings:
+                final_audio_settings["voice"] = "ballad"
+
+        if final_audio_settings:
+            api_arguments["audio"] = final_audio_settings
         # remove None values, OpenAI API doesn't like them
         for key, value in dict(api_arguments).items():
             if value is None:
@@ -507,14 +523,32 @@ async def complete(
                     )
                     print(f"[DEBUG] used format_messages, message count: {len(api_arguments['messages'])}")
                 else:
-                    api_arguments["messages"] = [
-                        {
-                            "role": "system",
-                            "content": f"Respond to the chat, where your username is shown as {name}. Only respond with the content of your message, without including your username.",
-                        },
-                        {"role": "user", "content": api_arguments["prompt"]},
-                    ]
-                    print(f"[DEBUG] chat history sent as a single user message")
+                    prompt_text = api_arguments.get("prompt", "")
+                    if "<|begin_of_img_url|>" in prompt_text:
+                        # Multimodal message
+                        content_parts = []
+                        sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt_text)
+                        for i, section in enumerate(sections):
+                            if i % 2 == 0: # text
+                                if section.strip():
+                                    content_parts.append({"type": "text", "text": section.strip()})
+                            else: # image url
+                                url = section.strip()
+                                if url:
+                                    content_parts.append({"type": "image_url", "image_url": {"url": url}})
+                        
+                        api_arguments["messages"] = [{"role": "user", "content": content_parts}]
+                        print(f"[DEBUG] chat history sent as a single multimodal user message")
+                    else:
+                        # Original logic for text-only prompt
+                        api_arguments["messages"] = [
+                            {
+                                "role": "system",
+                                "content": f"Respond to the chat, where your username is shown as {name}. Only respond with the content of your message, without including your username.",
+                            },
+                            {"role": "user", "content": prompt_text},
+                        ]
+                        print(f"[DEBUG] chat history sent as a single user message")
             else:
                 api_arguments["messages"] = messages
                 print(f"[DEBUG] messages sent as is, message count: {len(api_arguments['messages'])}")
@@ -584,6 +618,15 @@ async def complete(
         if api_suffix == "/chat/completions":
             print(f"[DEBUG] message count: {len(api_arguments['messages'])}")
 
+        api_arguments['messages'] = await prepare_openai_messages(
+            api_arguments.get('messages'),
+            api_arguments.get('prompt'),
+            session
+        )
+        # Clean up prompt if we have messages now
+        if 'prompt' in api_arguments and api_arguments['messages']:
+            del api_arguments['prompt']
+
         # Log the request before sending
         request_log_file = _log_openai_request({
             "url": api_base + api_suffix,
@@ -615,26 +658,43 @@ async def complete(
         print(f"API Response: {api_response}")
 
         try:
+            completions = []
+            for choice in api_response["choices"]:
+                text = ""
+                audio = None
+                reasoning_content = None
+
+                if api_suffix == "/completions":
+                    text = choice.get("text", "").strip()
+                else:
+                    message = choice.get("message", {})
+                    if message:
+                        content = message.get("content")
+                        if content is not None:
+                            text = content.strip()
+
+                        audio_data = message.get("audio")
+                        if audio_data:
+                            audio = audio_data
+                            if not text and audio_data.get("transcript"):
+                                text = audio_data["transcript"]
+
+                        if reasoning_content_key:
+                            reasoning_content = message.get(reasoning_content_key)
+
+                completions.append(
+                    {
+                        "text": text,
+                        "audio": audio,
+                        "finish_reason": {
+                            "reason": choice.get("finish_reason", "unknown")
+                        },
+                        "reasoning_content": reasoning_content,
+                    }
+                )
             return {
                 "prompt": {"text": prompt if prompt is not None else "<|endoftext|>"},
-                "completions": [
-                    {
-                        "text": (
-                            completion["text"].strip()
-                            if api_suffix == "/completions"
-                            else completion["message"]["content"].strip()
-                        ),
-                        "finish_reason": {
-                            "reason": completion.get("finish_reason", "unknown")
-                        },
-                        "reasoning_content": (
-                            completion["message"].get(reasoning_content_key, None)
-                            if reasoning_content_key is not None
-                            else None
-                        ),
-                    }
-                    for completion in api_response["choices"]
-                ],
+                "completions": completions,
                 "model": api_response.get("model"),
                 "id": api_response.get("id"),
                 "created": api_response.get("created"),
@@ -2533,3 +2593,76 @@ def clear_url_validation_cache():
     _url_validation_cache.clear()
     print(f"[DEBUG] URL validation cache cleared", file=sys.stderr)
 
+
+async def prepare_openai_messages(
+    messages: Optional[List[dict]],
+    prompt: Optional[str],
+    session: aiohttp.ClientSession
+) -> List[dict]:
+    """Prepares a list of messages for the OpenAI API, handling multimodal inputs and audio history."""
+    # 1. Start with a clean copy of existing messages
+    final_messages = [msg.copy() for msg in messages] if messages else []
+
+    # 2. Clean audio objects in existing assistant message history
+    for msg in final_messages:
+        if msg.get('role') == 'assistant' and 'audio' in msg and isinstance(msg.get('audio'), dict):
+            audio_id = msg['audio'].get('id')
+            if audio_id:
+                # Per OpenAI docs, only the ID should be sent back
+                msg['audio'] = {'id': audio_id}
+            else:
+                # If the audio object has no ID (e.g., only data), remove it to avoid errors
+                del msg['audio']
+
+    # 3. Process the new prompt string, if it exists
+    if not prompt:
+        return final_messages
+
+    # Regex to find all supported tags
+    pattern = r"(<\|(?:begin)_(img|audio)_url\|>[\s\S]*?<\|(?:end)_\2_url\|>|<\|audio_ref_id\|>[\s\S]*?<\|\/audio_ref_id\|>)"
+    tokens = re.split(pattern, prompt)
+
+    user_content_parts = []
+    
+    for token in tokens:
+        if not token: continue
+
+        img_audio_url_match = re.match(r"<\|begin_(img|audio)_url\|>([\s\S]*?)<\|end_\1_url\|>", token)
+        audio_ref_match = re.match(r"<\|audio_ref_id\|>([\s\S]*?)<\|\/audio_ref_id\|>", token)
+
+        if img_audio_url_match:
+            tag_type, url = img_audio_url_match.groups()
+            url = url.strip()
+            if not url: continue
+            
+            if tag_type == 'img':
+                user_content_parts.append({"type": "image_url", "image_url": {"url": url}})
+            elif tag_type == 'audio':
+                try:
+                    print(f"[DEBUG] Processing audio URL for input: {url}", file=sys.stderr)
+                    async with session.get(url) as response:
+                        response.raise_for_status()
+                        audio_data = await response.read()
+                        content_type = response.headers.get("Content-Type", "audio/mpeg")
+
+                    base64_audio = base64.b64encode(audio_data).decode('utf-8')
+                    data_url = f"data:{content_type};base64,{base64_audio}"
+                    user_content_parts.append({"type": "audio_url", "audio_url": {"url": data_url}})
+                except Exception as e:
+                    print(f"[ERROR] Failed to process audio URL {url}: {e}", file=sys.stderr)
+                    user_content_parts.append({"type": "text", "text": f"[Error processing audio URL: {url}]"})
+        elif audio_ref_match:
+            audio_id = audio_ref_match.group(1).strip()
+            if audio_id:
+                # Inject a preceding assistant message to provide the audio context
+                final_messages.append({'role': 'assistant', 'content': None, 'audio': {'id': audio_id}})
+        else:
+            # It's a regular text part
+            if token.strip():
+                user_content_parts.append({"type": "text", "text": token})
+
+    # 4. Add the final user message if it has any content parts
+    if user_content_parts:
+        final_messages.append({"role": "user", "content": user_content_parts})
+        
+    return final_messages
