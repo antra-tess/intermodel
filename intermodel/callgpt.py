@@ -457,6 +457,9 @@ async def complete(
             elif "voice" not in final_audio_settings:
                 final_audio_settings["voice"] = "ballad"
 
+            if "format" not in final_audio_settings:
+                final_audio_settings["format"] = "mp3"
+
         if final_audio_settings:
             api_arguments["audio"] = final_audio_settings
         # remove None values, OpenAI API doesn't like them
