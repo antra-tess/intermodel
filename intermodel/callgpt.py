@@ -621,7 +621,8 @@ async def complete(
         api_arguments['messages'] = await prepare_openai_messages(
             api_arguments.get('messages'),
             api_arguments.get('prompt'),
-            session
+            session,
+            model
         )
         # Clean up prompt if we have messages now
         if 'prompt' in api_arguments and api_arguments['messages']:
@@ -1679,7 +1680,7 @@ def tokenize(model: str, string: str) -> List[int]:
     # actual tokenizer for claude 3.x models is unknown
     #print(f"[DEBUG] Tokenizing {model} with vendor {vendor}", file=sys.stderr)
     if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith(
-            "chatgpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
+            "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
             "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1"):
         # tiktoken internally caches loaded tokenizers
@@ -1693,9 +1694,7 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
-        elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini"):
-            tokenizer = tiktoken.encoding_for_model("gpt-4o")
-        elif model.startswith("chatgpt-4o"):
+        elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("chatgpt-4o") or model.startswith("gpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("gpt-4.5-preview"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
@@ -1890,7 +1889,7 @@ def max_token_length_inner(model):
         return 1024
     elif model == "gpt-4-32k":
         return 32769
-    elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini"):
+    elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("chatgpt-4o") or model.startswith("gpt-4o"):
         return 128_000
     elif model == "gpt-4.5-preview":
         return 128_000  # gpt-4.5-preview has a 128k context window
@@ -1898,8 +1897,6 @@ def max_token_length_inner(model):
         return 128_000  # Assume gpt-4.1 has 128k context window like 4.5
     elif model.startswith("gpt-4"):
         return 8193
-    elif model.startswith("chatgpt-4o"):
-        return 128_000
     elif model.startswith("grok"):
         return 128_000
     elif model.startswith("aion"):
@@ -2594,24 +2591,40 @@ def clear_url_validation_cache():
     print(f"[DEBUG] URL validation cache cleared", file=sys.stderr)
 
 
+def is_openai_audio_model(model: str) -> bool:
+    """Checks if the OpenAI model is known to support audio modality."""
+    # gpt-4o models are "omni" and handle audio. This may need to be updated as new models are released.
+    return model.startswith("gpt-4o-audio")
+
+
 async def prepare_openai_messages(
     messages: Optional[List[dict]],
     prompt: Optional[str],
-    session: aiohttp.ClientSession
+    session: aiohttp.ClientSession,
+    model: str
 ) -> List[dict]:
     """Prepares a list of messages for the OpenAI API, handling multimodal inputs and audio history."""
+    
+    supports_audio = is_openai_audio_model(model)
+    if not supports_audio:
+        print(f"[DEBUG] Model {model} does not support audio. Stripping audio content.", file=sys.stderr)
+
     # 1. Start with a clean copy of existing messages
     final_messages = [msg.copy() for msg in messages] if messages else []
 
     # 2. Clean audio objects in existing assistant message history
     for msg in final_messages:
-        if msg.get('role') == 'assistant' and 'audio' in msg and isinstance(msg.get('audio'), dict):
-            audio_id = msg['audio'].get('id')
-            if audio_id:
-                # Per OpenAI docs, only the ID should be sent back
-                msg['audio'] = {'id': audio_id}
+        if msg.get('role') == 'assistant' and 'audio' in msg:
+            if supports_audio and isinstance(msg.get('audio'), dict):
+                audio_id = msg['audio'].get('id')
+                if audio_id:
+                    # Per OpenAI docs, only the ID should be sent back
+                    msg['audio'] = {'id': audio_id}
+                else:
+                    # If the audio object has no ID (e.g., only data), remove it to avoid errors
+                    del msg['audio']
             else:
-                # If the audio object has no ID (e.g., only data), remove it to avoid errors
+                # Model doesn't support audio, or audio object is malformed. Remove it.
                 del msg['audio']
 
     # 3. Process the new prompt string, if it exists
@@ -2638,24 +2651,30 @@ async def prepare_openai_messages(
             if tag_type == 'img':
                 user_content_parts.append({"type": "image_url", "image_url": {"url": url}})
             elif tag_type == 'audio':
-                try:
-                    print(f"[DEBUG] Processing audio URL for input: {url}", file=sys.stderr)
-                    async with session.get(url) as response:
-                        response.raise_for_status()
-                        audio_data = await response.read()
-                        content_type = response.headers.get("Content-Type", "audio/mpeg")
+                if supports_audio:
+                    try:
+                        print(f"[DEBUG] Processing audio URL for input: {url}", file=sys.stderr)
+                        async with session.get(url) as response:
+                            response.raise_for_status()
+                            audio_data = await response.read()
+                            content_type = response.headers.get("Content-Type", "audio/mpeg")
 
-                    base64_audio = base64.b64encode(audio_data).decode('utf-8')
-                    data_url = f"data:{content_type};base64,{base64_audio}"
-                    user_content_parts.append({"type": "audio_url", "audio_url": {"url": data_url}})
-                except Exception as e:
-                    print(f"[ERROR] Failed to process audio URL {url}: {e}", file=sys.stderr)
-                    user_content_parts.append({"type": "text", "text": f"[Error processing audio URL: {url}]"})
+                        base64_audio = base64.b64encode(audio_data).decode('utf-8')
+                        data_url = f"data:{content_type};base64,{base64_audio}"
+                        user_content_parts.append({"type": "audio_url", "audio_url": {"url": data_url}})
+                    except Exception as e:
+                        print(f"[ERROR] Failed to process audio URL {url}: {e}", file=sys.stderr)
+                        user_content_parts.append({"type": "text", "text": f"[Error processing audio URL: {url}]"})
+                else:
+                    user_content_parts.append({"type": "text", "text": "[Audio content removed: model does not support audio]"})
         elif audio_ref_match:
-            audio_id = audio_ref_match.group(1).strip()
-            if audio_id:
-                # Inject a preceding assistant message to provide the audio context
-                final_messages.append({'role': 'assistant', 'content': None, 'audio': {'id': audio_id}})
+            if supports_audio:
+                audio_id = audio_ref_match.group(1).strip()
+                if audio_id:
+                    # Inject a preceding assistant message to provide the audio context
+                    final_messages.append({'role': 'assistant', 'content': None, 'audio': {'id': audio_id}})
+            else:
+                user_content_parts.append({"type": "text", "text": "[Audio reference removed: model does not support audio]"})
         else:
             # It's a regular text part
             if token.strip():
