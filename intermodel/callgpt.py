@@ -680,13 +680,13 @@ async def complete(
                 reasoning_content = None
 
                 if api_suffix == "/completions":
-                    text = choice.get("text", "").strip()
+                    text = convert_literal_newlines(choice.get("text", "").strip())
                 else:
                     message = choice.get("message", {})
                     if message:
                         content = message.get("content")
                         if content is not None:
-                            text = content.strip()
+                            text = convert_literal_newlines(content.strip())
 
                         audio_data = message.get("audio")
                         if audio_data:
@@ -1074,7 +1074,7 @@ async def complete(
             if content_block.type == "thinking":
                 reasoning_content = content_block.thinking
             elif content_block.type == "text":
-                text_content = content_block.text
+                text_content = convert_literal_newlines(content_block.text)
 
         return {
             "prompt": {
@@ -1421,7 +1421,7 @@ async def complete(
                 for candidate in response.candidates:
                     for part in candidate.content.parts:
                         if part.text is not None:
-                            text_content = part.text
+                            text_content = convert_literal_newlines(part.text)
                             print(f"[DEBUG] Received text response: {text_content[:100]}{'...' if len(text_content) > 100 else ''}", file=sys.stderr)
                         if part.inline_data is not None:
                             image_data = part.inline_data.data
@@ -1518,7 +1518,8 @@ async def complete(
                     _log_gemini_response(response, log_dir, request_log_file)
 
                 if response.text:
-                   print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
+                   converted_text = convert_literal_newlines(response.text)
+                   print(f"[DEBUG] Received response: {converted_text[:100]}{'...' if len(converted_text) > 100 else ''}", file=sys.stderr)
                 else:
                     print(f"[DEBUG] Received response with no text: {response}", file=sys.stderr)
                     raise Exception("No text returned from Gemini: " + str(response))
@@ -1528,7 +1529,7 @@ async def complete(
                     "prompt": {"text": prompt},
                     "completions": [
                         {
-                            "text": response.text,
+                            "text": converted_text,
                             "finish_reason": "stop"
                         }
                     ],
@@ -2699,3 +2700,20 @@ async def prepare_openai_messages(
         final_messages.append({"role": "user", "content": user_content_parts})
         
     return final_messages
+
+
+def convert_literal_newlines(text: str) -> str:
+    """Convert literal \n sequences to actual newlines.
+    
+    Args:
+        text (str): Text that may contain literal \n sequences
+        
+    Returns:
+        str: Text with literal \n converted to actual newlines
+    """
+    if not isinstance(text, str):
+        return text
+    
+    # Convert literal \n to actual newlines
+    # Be careful not to convert \\n (escaped backslash + n) 
+    return text.replace('\\n', '\n')
