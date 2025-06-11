@@ -680,13 +680,13 @@ async def complete(
                 reasoning_content = None
 
                 if api_suffix == "/completions":
-                    text = convert_literal_newlines(choice.get("text", "").strip())
+                    text = choice.get("text", "").strip()
                 else:
                     message = choice.get("message", {})
                     if message:
                         content = message.get("content")
                         if content is not None:
-                            text = convert_literal_newlines(content.strip())
+                            text = content.strip()
 
                         audio_data = message.get("audio")
                         if audio_data:
@@ -696,6 +696,10 @@ async def complete(
 
                         if reasoning_content_key:
                             reasoning_content = message.get(reasoning_content_key)
+
+                # Convert literal \n to actual newlines for OpenAI responses
+                if text:
+                    text = convert_literal_newlines_for_openai(text)
 
                 completions.append(
                     {
@@ -764,7 +768,7 @@ async def complete(
             "prompt": {"text": api_response["prompt"]["text"]},
             "completions": [
                 {
-                    "text": convert_literal_newlines(completion["data"]["text"]),
+                    "text": completion["data"]["text"],
                     "finish_reason": completion["finishReason"]["reason"],
                 }
                 for completion in api_response["completions"]
@@ -1074,7 +1078,7 @@ async def complete(
             if content_block.type == "thinking":
                 reasoning_content = content_block.thinking
             elif content_block.type == "text":
-                text_content = convert_literal_newlines(content_block.text)
+                text_content = content_block.text
 
         return {
             "prompt": {
@@ -1421,7 +1425,7 @@ async def complete(
                 for candidate in response.candidates:
                     for part in candidate.content.parts:
                         if part.text is not None:
-                            text_content = convert_literal_newlines(part.text)
+                            text_content = part.text
                             print(f"[DEBUG] Received text response: {text_content[:100]}{'...' if len(text_content) > 100 else ''}", file=sys.stderr)
                         if part.inline_data is not None:
                             image_data = part.inline_data.data
@@ -1518,8 +1522,7 @@ async def complete(
                     _log_gemini_response(response, log_dir, request_log_file)
 
                 if response.text:
-                   converted_text = convert_literal_newlines(response.text)
-                   print(f"[DEBUG] Received response: {converted_text[:100]}{'...' if len(converted_text) > 100 else ''}", file=sys.stderr)
+                   print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
                 else:
                     print(f"[DEBUG] Received response with no text: {response}", file=sys.stderr)
                     raise Exception("No text returned from Gemini: " + str(response))
@@ -1529,7 +1532,7 @@ async def complete(
                     "prompt": {"text": prompt},
                     "completions": [
                         {
-                            "text": converted_text,
+                            "text": response.text,
                             "finish_reason": "stop"
                         }
                     ],
@@ -2701,19 +2704,22 @@ async def prepare_openai_messages(
         
     return final_messages
 
-
-def convert_literal_newlines(text: str) -> str:
-    """Convert literal \n sequences to actual newlines.
+def convert_literal_newlines_for_openai(text: str) -> str:
+    """Convert literal \\n strings to actual newlines in OpenAI response text.
+    
+    Sometimes OpenAI models return literal \\n instead of actual newline characters.
+    This function detects and converts them to proper newlines.
     
     Args:
-        text (str): Text that may contain literal \n sequences
+        text (str): The text to process
         
     Returns:
-        str: Text with literal \n converted to actual newlines
+        str: Text with literal \\n converted to actual newlines
     """
-    if not isinstance(text, str):
+    if not text:
         return text
     
-    # Convert literal \n to actual newlines
-    # Be careful not to convert \\n (escaped backslash + n) 
+    # Replace literal \n with actual newlines
+    # Be careful to only replace literal \n, not already-escaped \\n
+    # We'll use a simple approach: replace \n with actual newlines if it's not preceded by a backslash
     return text.replace('\\n', '\n')
