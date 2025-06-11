@@ -493,6 +493,7 @@ async def complete(
         
         # Explicitly check for base models that should use completions endpoint
         is_base_model = model.endswith("-base") or model == "gpt-4-base"
+        print(f"[DEBUG] is_base_model: {is_base_model}")
         
         if (
             is_force_api_mode_chat(force_api_mode) or
