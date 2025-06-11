@@ -490,6 +490,10 @@ async def complete(
         print(f"[DEBUG] force_api_mode: {force_api_mode}")
         print(f"[DEBUG] is_force_api_mode_chat(force_api_mode): {is_force_api_mode_chat(force_api_mode)}")
         print(f"[DEBUG] is_force_api_mode_completions(force_api_mode): {is_force_api_mode_completions(force_api_mode)}")
+        
+        # Explicitly check for base models that should use completions endpoint
+        is_base_model = model.endswith("-base") or model == "gpt-4-base"
+        
         if (
             is_force_api_mode_chat(force_api_mode) or
             (not is_force_api_mode_completions(force_api_mode)) and (
@@ -514,7 +518,7 @@ async def complete(
                 model.startswith("o3") or
                 model.startswith("o4-mini")
             )
-        ) and not model.endswith("-base"):
+        ) and not is_base_model:
         
             if messages is None:
                 if (
