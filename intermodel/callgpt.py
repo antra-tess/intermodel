@@ -764,7 +764,7 @@ async def complete(
             "prompt": {"text": api_response["prompt"]["text"]},
             "completions": [
                 {
-                    "text": completion["data"]["text"],
+                    "text": convert_literal_newlines(completion["data"]["text"]),
                     "finish_reason": completion["finishReason"]["reason"],
                 }
                 for completion in api_response["completions"]
