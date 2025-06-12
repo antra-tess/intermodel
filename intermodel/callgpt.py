@@ -447,21 +447,24 @@ async def complete(
         if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini"):
             api_arguments["max_tokens"] = max_tokens
 
-        if modalities:
-            api_arguments["modalities"] = modalities
+        # Only add audio-related parameters for models that support them
+        if is_openai_audio_model(model):
+            if modalities:
+                api_arguments["modalities"] = modalities
 
-        final_audio_settings = audio_settings or {}
-        if modalities and "audio" in modalities:
-            if voice:
-                final_audio_settings["voice"] = voice
-            elif "voice" not in final_audio_settings:
-                final_audio_settings["voice"] = "ballad"
+            # Add the 'audio' parameter block if audio is requested via modalities or explicit settings
+            if (modalities and "audio" in modalities) or audio_settings:
+                final_audio_settings = audio_settings or {}
+                if voice:
+                    final_audio_settings["voice"] = voice
+                elif "voice" not in final_audio_settings:
+                    final_audio_settings["voice"] = "ballad"
 
-            if "format" not in final_audio_settings:
-                final_audio_settings["format"] = "mp3"
-
-        if final_audio_settings:
-            api_arguments["audio"] = final_audio_settings
+                if "format" not in final_audio_settings:
+                    final_audio_settings["format"] = "mp3"
+                
+                if final_audio_settings:
+                    api_arguments["audio"] = final_audio_settings
         # remove None values, OpenAI API doesn't like them
         for key, value in dict(api_arguments).items():
             if value is None:
