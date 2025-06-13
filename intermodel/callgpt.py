@@ -1917,7 +1917,7 @@ def max_token_length_inner(model):
     elif model.startswith("gpt-4.1"):
         return 128_000  # Assume gpt-4.1 has 128k context window like 4.5
     elif model.startswith("gpt-4"):
-        return 8193
+        return 8000
     elif model.startswith("grok"):
         return 128_000
     elif model.startswith("aion"):
