@@ -570,12 +570,14 @@ async def complete(
             if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith("grok") or model.startswith("o3") or model.startswith("o4-mini"):
                 if "logit_bias" in api_arguments:
                     del api_arguments["logit_bias"]
-                # Remove presence_penalty and frequency_penalty for grok models as they don't support them
+                # Remove presence_penalty, frequency_penalty, and stop for grok models as they don't support them
                 if model.startswith("grok"):
                     if "presence_penalty" in api_arguments:
                         del api_arguments["presence_penalty"]
                     if "frequency_penalty" in api_arguments:
                         del api_arguments["frequency_penalty"]
+                    if "stop" in api_arguments:
+                        del api_arguments["stop"]
                 if (
                     model.startswith("o1")
                     or model.startswith("o3")
