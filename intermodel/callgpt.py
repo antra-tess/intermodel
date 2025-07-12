@@ -520,7 +520,8 @@ async def complete(
                 model.startswith("DeepHermes-3-Mistral-24B-Preview") or
                 api_base.startswith("https://integrate.api.nvidia.com") or
                 model.startswith("o3") or
-                model.startswith("o4-mini")
+                model.startswith("o4-mini") or
+                model.startswith("moonshotai/")
             )
         ) and not is_base_model:
         
