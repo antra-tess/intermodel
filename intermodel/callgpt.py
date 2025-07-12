@@ -1711,7 +1711,7 @@ def tokenize(model: str, string: str) -> List[int]:
     if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith(
             "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
-            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1"):
+            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/"):
         # tiktoken internally caches loaded tokenizers
         #print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
 
@@ -1748,6 +1748,8 @@ def tokenize(model: str, string: str) -> List[int]:
         elif model.startswith("meta-llama/llama-3.1-405b"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("gemini-"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
+        elif model.startswith("moonshotai/"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         else:
             #print(f"[DEBUG] Getting tokenizer for {model}", file=sys.stderr)
@@ -1900,6 +1902,8 @@ def pick_vendor(model, custom_config=None):
         return "openai"  # Google models go through OpenRouter
     elif model.startswith("gemini-"):
         return "gemini"  # Gemini models go directly
+    elif model.startswith("moonshotai/"):
+        return "openai"  # Moonshot models use OpenAI-compatible API
     elif "/" in model:
         return "huggingface"
     else:
@@ -1988,6 +1992,10 @@ def max_token_length_inner(model):
         if model == "gemini-2.0-flash-exp":
             return 127000  # Image generation model has shorter context
         return 127000  # Standard Gemini models have 32k context
+    elif model.startswith("moonshotai/"):
+        if model == "moonshotai/kimi-k2":
+            return 130000  # 130k context length
+        return 130000  # Default for Moonshot models
     elif "deployedModel" in model: # Added for RunPod deployed models
         return 64000
     elif model == "dall-e-3" or model == "gpt-image-1":
