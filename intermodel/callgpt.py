@@ -498,6 +498,10 @@ async def complete(
         is_base_model = model.endswith("-base") or model == "gpt-4-base"
         print(f"[DEBUG] is_base_model: {is_base_model}")
         
+        # Check if this is an anthropic model going through OpenRouter (special handling needed)
+        is_anthropic_openrouter = model.startswith("anthropic/claude-")
+        print(f"[DEBUG] is_anthropic_openrouter: {is_anthropic_openrouter}")
+        
         if (
             is_force_api_mode_chat(force_api_mode) or
             (not is_force_api_mode_completions(force_api_mode)) and (
@@ -521,7 +525,8 @@ async def complete(
                 api_base.startswith("https://integrate.api.nvidia.com") or
                 model.startswith("o3") or
                 model.startswith("o4-mini") or
-                model.startswith("moonshotai/")
+                model.startswith("moonshotai/") or
+                is_anthropic_openrouter
             )
         ) and not is_base_model:
         
@@ -598,6 +603,27 @@ async def complete(
                         reasoning_content_key = "reasoning_content"
             # Remove empty logit_bias for NVIDIA endpoints
             api_suffix = "/chat/completions"
+            
+            # Special handling for Anthropic models through OpenRouter
+            if is_anthropic_openrouter and "messages" in api_arguments:
+                anthropic_prompt = convert_messages_to_anthropic_prompt(api_arguments["messages"])
+                api_arguments["prompt"] = anthropic_prompt
+                del api_arguments["messages"]
+                print(f"[DEBUG] Converted messages to Anthropic prompt format for OpenRouter")
+                
+                # Handle thinking parameter for OpenRouter Anthropic models
+                if "thinking" in kwargs:
+                    thinking_config = kwargs.pop("thinking")
+                    if isinstance(thinking_config, dict):
+                        if "type" not in thinking_config:
+                            thinking_config["type"] = "enabled"
+                        api_arguments["thinking"] = thinking_config
+                    elif isinstance(thinking_config, bool) and thinking_config:
+                        api_arguments["thinking"] = {
+                            "type": "enabled",
+                            "budget_tokens": max(2048, max_tokens // 2)
+                        }
+                    print(f"[DEBUG] Added thinking parameter for OpenRouter Anthropic model")
         else:                
             api_suffix = "/completions"
             
@@ -875,8 +901,8 @@ async def complete(
             if value is None:
                 del kwargs[key]
 
-        # Handle thinking parameter for Claude 3
-        if (model.startswith("anthropic/claude-") or model.startswith("claude-")) and "thinking" in kwargs:
+        # Handle thinking parameter for Claude 3 (direct Anthropic API only)
+        if model.startswith("claude-") and "thinking" in kwargs:
             thinking_config = kwargs.pop("thinking")
             if isinstance(thinking_config, dict):
                 if "type" not in thinking_config:
@@ -2739,17 +2765,81 @@ def convert_literal_newlines_for_openai(text: str) -> str:
     
     Sometimes OpenAI models return literal \\n instead of actual newline characters.
     This function detects and converts them to proper newlines.
-    
+     
     Args:
         text (str): The text to process
-        
+         
     Returns:
         str: Text with literal \\n converted to actual newlines
     """
     if not text:
         return text
-    
+     
     # Replace literal \n with actual newlines
     # Be careful to only replace literal \n, not already-escaped \\n
     # We'll use a simple approach: replace \n with actual newlines if it's not preceded by a backslash
     return text.replace('\\n', '\n')
+
+
+def convert_messages_to_anthropic_prompt(messages: List[dict]) -> str:
+    """Convert OpenAI-style messages to Anthropic prompt format for OpenRouter.
+    
+    This handles the special case where Anthropic models on OpenRouter use the
+    /chat/completions endpoint but with a 'prompt' parameter instead of 'messages'.
+    
+    Supports prefill pattern: if the last message is from assistant, it becomes
+    the start of the completion (mimicking Anthropic's prefill behavior).
+    
+    Args:
+        messages: List of OpenAI-style message dicts
+        
+    Returns:
+        str: Anthropic-style prompt string
+    """
+    if not messages:
+        return ""
+    
+    prompt_parts = []
+    
+    for i, message in enumerate(messages):
+        role = message.get("role", "user")
+        content = message.get("content", "")
+        
+        # Extract text content if it's in OpenAI multimodal format
+        if isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if part.get("type") == "text":
+                    text_parts.append(part.get("text", ""))
+            content = " ".join(text_parts)
+        
+        # Convert role names to Anthropic format
+        if role == "system":
+            # System messages go at the beginning
+            if i == 0:
+                prompt_parts.append(content)
+            else:
+                # System messages in the middle get treated as human messages
+                prompt_parts.append(f"\n\nHuman: {content}")
+        elif role == "user":
+            prompt_parts.append(f"\n\nHuman: {content}")
+        elif role == "assistant":
+            is_last_message = (i == len(messages) - 1)
+            if is_last_message:
+                # Last assistant message becomes prefill (no closing for completion)
+                prompt_parts.append(f"\n\nAssistant: {content}")
+            else:
+                # Assistant messages in the middle are complete
+                prompt_parts.append(f"\n\nAssistant: {content}")
+        else:
+            # Treat unknown roles as human
+            prompt_parts.append(f"\n\nHuman: {content}")
+    
+    # Ensure we end with Assistant: if the last message wasn't from assistant
+    if messages and messages[-1].get("role") != "assistant":
+        prompt_parts.append("\n\nAssistant:")
+    
+    prompt = "".join(prompt_parts).strip()
+    print(f"[DEBUG] Converted {len(messages)} messages to Anthropic prompt: {len(prompt)} chars")
+    
+    return prompt
