@@ -723,6 +723,11 @@ async def complete(
 
                 if api_suffix == "/completions":
                     text = choice.get("text", "").strip()
+                elif is_anthropic_openrouter:
+                    # OpenRouter anthropic models return text directly in choice, not under message
+                    text = choice.get("text", "").strip()
+                    if reasoning_content_key:
+                        reasoning_content = choice.get(reasoning_content_key)
                 else:
                     message = choice.get("message", {})
                     if message:
