@@ -498,8 +498,12 @@ async def complete(
         is_base_model = model.endswith("-base") or model == "gpt-4-base"
         print(f"[DEBUG] is_base_model: {is_base_model}")
         
+        # Special case: anthropic/claude- models always use chat endpoint, even in completion mode
+        is_anthropic_through_openrouter = model.startswith("anthropic/claude-")
+        
         if (
             is_force_api_mode_chat(force_api_mode) or
+            is_anthropic_through_openrouter or  # Force anthropic models to use chat endpoint
             (not is_force_api_mode_completions(force_api_mode)) and (
                 (message_history_format is not None and message_history_format.is_chat()) or
                 model.startswith("gpt-3.5") or
@@ -525,7 +529,13 @@ async def complete(
             )
         ) and not is_base_model:
         
-            if messages is None:
+            # Special handling for anthropic/claude- models in completion mode
+            if is_anthropic_through_openrouter and not (message_history_format is not None and message_history_format.is_chat()) and messages is None:
+                # Anthropic models through OpenRouter in completion mode use 'prompt' parameter with chat endpoint
+                print(f"[DEBUG] Using anthropic/claude- completion mode: keeping prompt parameter")
+                # Keep the prompt parameter, don't convert to messages
+                pass
+            elif messages is None:
                 if (
                     message_history_format is not None
                     and message_history_format.is_chat() 
@@ -564,7 +574,9 @@ async def complete(
             else:
                 api_arguments["messages"] = messages
                 print(f"[DEBUG] messages sent as is, message count: {len(api_arguments['messages'])}")
-            if "prompt" in api_arguments:
+            
+            # Don't delete prompt for anthropic/claude- models in completion mode
+            if "prompt" in api_arguments and not (is_anthropic_through_openrouter and not (message_history_format is not None and message_history_format.is_chat()) and messages is None):
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
@@ -636,18 +648,22 @@ async def complete(
                 
         print(f"[DEBUG] Using endpoint: {api_base + api_suffix}")
         if api_suffix == "/chat/completions":
-            print(f"[DEBUG] message count: {len(api_arguments['messages'])}")
-            
-            # Only prepare messages for chat completions endpoint
-            api_arguments['messages'] = await prepare_openai_messages(
-                api_arguments.get('messages'),
-                api_arguments.get('prompt'),
-                session,
-                model
-            )
-            # Clean up prompt if we have messages now
-            if 'prompt' in api_arguments and api_arguments['messages']:
-                del api_arguments['prompt']
+            # Special case: anthropic/claude- models in completion mode use prompt parameter, skip message processing
+            if is_anthropic_through_openrouter and 'prompt' in api_arguments and 'messages' not in api_arguments:
+                print(f"[DEBUG] anthropic/claude- completion mode: using prompt parameter directly")
+            else:
+                print(f"[DEBUG] message count: {len(api_arguments.get('messages', []))}")
+                
+                # Only prepare messages for chat completions endpoint
+                api_arguments['messages'] = await prepare_openai_messages(
+                    api_arguments.get('messages'),
+                    api_arguments.get('prompt'),
+                    session,
+                    model
+                )
+                # Clean up prompt if we have messages now
+                if 'prompt' in api_arguments and api_arguments['messages']:
+                    del api_arguments['prompt']
         else:
             # For completions endpoint, ensure we have prompt and no messages
             print(f"[DEBUG] Using completions endpoint with prompt: {len(api_arguments.get('prompt', ''))} chars")
