@@ -753,6 +753,7 @@ async def complete(
                         "reasoning_content": reasoning_content,
                     }
                 )
+            print(f"[DEBUG] completions: {completions}")
             return {
                 "prompt": {"text": prompt if prompt is not None else "<|endoftext|>"},
                 "completions": completions,
