@@ -662,18 +662,22 @@ async def complete(
                 
         print(f"[DEBUG] Using endpoint: {api_base + api_suffix}")
         if api_suffix == "/chat/completions":
-            print(f"[DEBUG] message count: {len(api_arguments['messages'])}")
+            if 'messages' in api_arguments:
+                print(f"[DEBUG] message count: {len(api_arguments['messages'])}")
+            else:
+                print(f"[DEBUG] using prompt instead of messages (Anthropic OpenRouter mode)")
             
-            # Only prepare messages for chat completions endpoint
-            api_arguments['messages'] = await prepare_openai_messages(
-                api_arguments.get('messages'),
-                api_arguments.get('prompt'),
-                session,
-                model
-            )
-            # Clean up prompt if we have messages now
-            if 'prompt' in api_arguments and api_arguments['messages']:
-                del api_arguments['prompt']
+            # Only prepare messages for chat completions endpoint (except Anthropic OpenRouter models)
+            if not is_anthropic_openrouter:
+                api_arguments['messages'] = await prepare_openai_messages(
+                    api_arguments.get('messages'),
+                    api_arguments.get('prompt'),
+                    session,
+                    model
+                )
+                # Clean up prompt if we have messages now
+                if 'prompt' in api_arguments and api_arguments['messages']:
+                    del api_arguments['prompt']
         else:
             # For completions endpoint, ensure we have prompt and no messages
             print(f"[DEBUG] Using completions endpoint with prompt: {len(api_arguments.get('prompt', ''))} chars")
