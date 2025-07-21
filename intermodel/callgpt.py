@@ -864,7 +864,7 @@ async def complete(
                 del kwargs[key]
 
         # Handle thinking parameter for Claude 3
-        if model.startswith("claude-3") and "thinking" in kwargs:
+        if (model.startswith("anthropic/claude-") or model.startswith("claude-")) and "thinking" in kwargs:
             thinking_config = kwargs.pop("thinking")
             if isinstance(thinking_config, dict):
                 if "type" not in thinking_config:
@@ -1697,7 +1697,7 @@ def tokenize(model: str, string: str) -> List[int]:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
     #print(f"[DEBUG] Tokenizing {model} with vendor {vendor}", file=sys.stderr)
-    if vendor == "openai" or model == "gpt2" or model.startswith("claude-3") or model.startswith(
+    if vendor == "openai" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("claude-3") or model.startswith(
             "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
             "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1"):
@@ -1710,7 +1710,7 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.get_encoding("gpt2")
         elif "deployedModel" in model: # Added for RunPod deployed models
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
-        elif model.startswith("claude-3"):
+        elif model.startswith("anthropic/claude-") or model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("chatgpt-4o") or model.startswith("gpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
@@ -1881,6 +1881,8 @@ def pick_vendor(model, custom_config=None):
         return "ai21"
     elif "forefront" in model:
         return "forefront"
+    elif model.startswith("anthropic/claude-"):
+        return "openai"  # anthropic/ prefix models go through OpenRouter with OpenAI API
     elif model.startswith("claude-"):
         return "anthropic"
     elif model.startswith("aion"):
@@ -1949,6 +1951,14 @@ def max_token_length_inner(model):
         return 2046
     elif model == "claude-3-sonnet-20240229-steering-preview":
         return int(18_000 * 0.7)
+    elif model.startswith("anthropic/claude-3"):
+        return 200_000 * 0.7
+    elif model.startswith("anthropic/claude-2.1"):
+        return 200_000 * 0.7
+    elif model.startswith("anthropic/claude-2"):
+        return 100_000 * 0.7
+    elif model.startswith("anthropic/claude"):
+        return 100_000 * 0.7
     elif model.startswith("claude-3"):
         return 200_000 * 0.7
     elif model.startswith("claude-2.1"):
