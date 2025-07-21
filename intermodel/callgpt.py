@@ -447,21 +447,24 @@ async def complete(
         if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini"):
             api_arguments["max_tokens"] = max_tokens
 
-        if modalities:
-            api_arguments["modalities"] = modalities
+        # Only add audio-related parameters for models that support them
+        if is_openai_audio_model(model):
+            if modalities:
+                api_arguments["modalities"] = modalities
 
-        final_audio_settings = audio_settings or {}
-        if modalities and "audio" in modalities:
-            if voice:
-                final_audio_settings["voice"] = voice
-            elif "voice" not in final_audio_settings:
-                final_audio_settings["voice"] = "ballad"
+            # Add the 'audio' parameter block if audio is requested via modalities or explicit settings
+            if (modalities and "audio" in modalities) or audio_settings:
+                final_audio_settings = audio_settings or {}
+                if voice:
+                    final_audio_settings["voice"] = voice
+                elif "voice" not in final_audio_settings:
+                    final_audio_settings["voice"] = "ballad"
 
-            if "format" not in final_audio_settings:
-                final_audio_settings["format"] = "mp3"
-
-        if final_audio_settings:
-            api_arguments["audio"] = final_audio_settings
+                if "format" not in final_audio_settings:
+                    final_audio_settings["format"] = "mp3"
+                
+                if final_audio_settings:
+                    api_arguments["audio"] = final_audio_settings
         # remove None values, OpenAI API doesn't like them
         for key, value in dict(api_arguments).items():
             if value is None:
@@ -517,7 +520,8 @@ async def complete(
                 model.startswith("DeepHermes-3-Mistral-24B-Preview") or
                 api_base.startswith("https://integrate.api.nvidia.com") or
                 model.startswith("o3") or
-                model.startswith("o4-mini")
+                model.startswith("o4-mini") or
+                model.startswith("moonshotai/")
             )
         ) and not is_base_model:
         
@@ -567,6 +571,14 @@ async def complete(
             if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith("grok") or model.startswith("o3") or model.startswith("o4-mini"):
                 if "logit_bias" in api_arguments:
                     del api_arguments["logit_bias"]
+                # Remove presence_penalty, frequency_penalty, and stop for grok models as they don't support them
+                if model.startswith("grok"):
+                    if "presence_penalty" in api_arguments:
+                        del api_arguments["presence_penalty"]
+                    if "frequency_penalty" in api_arguments:
+                        del api_arguments["frequency_penalty"]
+                    if "stop" in api_arguments:
+                        del api_arguments["stop"]
                 if (
                     model.startswith("o1")
                     or model.startswith("o3")
@@ -1700,7 +1712,7 @@ def tokenize(model: str, string: str) -> List[int]:
     if vendor == "openai" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("claude-3") or model.startswith(
             "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
-            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1"):
+            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/"):
         # tiktoken internally caches loaded tokenizers
         #print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
 
@@ -1737,6 +1749,8 @@ def tokenize(model: str, string: str) -> List[int]:
         elif model.startswith("meta-llama/llama-3.1-405b"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("gemini-"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
+        elif model.startswith("moonshotai/"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         else:
             #print(f"[DEBUG] Getting tokenizer for {model}", file=sys.stderr)
@@ -1891,6 +1905,8 @@ def pick_vendor(model, custom_config=None):
         return "openai"  # Google models go through OpenRouter
     elif model.startswith("gemini-"):
         return "gemini"  # Gemini models go directly
+    elif model.startswith("moonshotai/"):
+        return "openai"  # Moonshot models use OpenAI-compatible API
     elif "/" in model:
         return "huggingface"
     else:
@@ -1916,7 +1932,7 @@ def max_token_length_inner(model):
     elif model.startswith("gpt-4.1"):
         return 128_000  # Assume gpt-4.1 has 128k context window like 4.5
     elif model.startswith("gpt-4"):
-        return 8193
+        return 8000
     elif model.startswith("grok"):
         return 128_000
     elif model.startswith("aion"):
@@ -1987,6 +2003,10 @@ def max_token_length_inner(model):
         if model == "gemini-2.0-flash-exp":
             return 127000  # Image generation model has shorter context
         return 127000  # Standard Gemini models have 32k context
+    elif model.startswith("moonshotai/"):
+        if model == "moonshotai/kimi-k2":
+            return 130000  # 130k context length
+        return 130000  # Default for Moonshot models
     elif "deployedModel" in model: # Added for RunPod deployed models
         return 64000
     elif model == "dall-e-3" or model == "gpt-image-1":
