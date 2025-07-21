@@ -2786,27 +2786,25 @@ def convert_literal_newlines_for_openai(text: str) -> str:
 
 
 def convert_messages_to_anthropic_prompt(messages: List[dict]) -> str:
-    """Convert OpenAI-style messages to Anthropic prompt format for OpenRouter.
+    """Convert OpenAI-style messages to prompt string for OpenRouter.
     
     This handles the special case where Anthropic models on OpenRouter use the
     /chat/completions endpoint but with a 'prompt' parameter instead of 'messages'.
     
-    Supports prefill pattern: if the last message is from assistant, it becomes
-    the start of the completion (mimicking Anthropic's prefill behavior).
+    Simply extracts and concatenates content without role formatting.
     
     Args:
         messages: List of OpenAI-style message dicts
         
     Returns:
-        str: Anthropic-style prompt string
+        str: Concatenated prompt string
     """
     if not messages:
         return ""
     
     prompt_parts = []
     
-    for i, message in enumerate(messages):
-        role = message.get("role", "user")
+    for message in messages:
         content = message.get("content", "")
         
         # Extract text content if it's in OpenAI multimodal format
@@ -2817,33 +2815,10 @@ def convert_messages_to_anthropic_prompt(messages: List[dict]) -> str:
                     text_parts.append(part.get("text", ""))
             content = " ".join(text_parts)
         
-        # Convert role names to Anthropic format
-        if role == "system":
-            # System messages go at the beginning
-            if i == 0:
-                prompt_parts.append(content)
-            else:
-                # System messages in the middle get treated as human messages
-                prompt_parts.append(f"\n\nHuman: {content}")
-        elif role == "user":
-            prompt_parts.append(f"\n\nHuman: {content}")
-        elif role == "assistant":
-            is_last_message = (i == len(messages) - 1)
-            if is_last_message:
-                # Last assistant message becomes prefill (no closing for completion)
-                prompt_parts.append(f"\n\nAssistant: {content}")
-            else:
-                # Assistant messages in the middle are complete
-                prompt_parts.append(f"\n\nAssistant: {content}")
-        else:
-            # Treat unknown roles as human
-            prompt_parts.append(f"\n\nHuman: {content}")
+        if content:
+            prompt_parts.append(content)
     
-    # Ensure we end with Assistant: if the last message wasn't from assistant
-    if messages and messages[-1].get("role") != "assistant":
-        prompt_parts.append("\n\nAssistant:")
-    
-    prompt = "".join(prompt_parts).strip()
-    print(f"[DEBUG] Converted {len(messages)} messages to Anthropic prompt: {len(prompt)} chars")
+    prompt = " ".join(prompt_parts).strip()
+    print(f"[DEBUG] Converted {len(messages)} messages to prompt: {len(prompt)} chars")
     
     return prompt
