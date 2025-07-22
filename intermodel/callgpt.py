@@ -454,6 +454,11 @@ async def complete(
                 if "quality" in kwargs: api_arguments_img["quality"] = kwargs["quality"]
                 if "style" in kwargs: api_arguments_img["style"] = kwargs["style"]
             
+            # Add gpt-image-1 specific parameters - default to no transparency
+            if model == "gpt-image-1":
+                # Default to no transparency unless explicitly overridden
+                api_arguments_img["background"] = kwargs.get("background", "opaque")
+            
             # Add response_format only for specific DALL-E models that support it
             if model == "dall-e-2" or model == "dall-e-3":
                 api_arguments_img["response_format"] = "b64_json"
