@@ -1147,7 +1147,7 @@ async def complete(
                 "vendor": vendor,
             },
         }
-    elif vendor == "bedrock":
+    elif vendor == "bedrock" or vendor == "aws-bedrock":
         from anthropic import AnthropicBedrock
         import os
         import sys
@@ -1981,7 +1981,7 @@ def tokenize(model: str, string: str) -> List[int]:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
     #print(f"[DEBUG] Tokenizing {model} with vendor {vendor}", file=sys.stderr)
-    if vendor == "openai" or vendor == "bedrock" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("anthropic.") or model.startswith("claude-3") or model.startswith(
+    if vendor == "openai" or vendor == "bedrock" or vendor == "aws-bedrock" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("anthropic.") or model.startswith("claude-3") or model.startswith(
             "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
             "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/"):
@@ -2169,6 +2169,8 @@ def pick_vendor(model, custom_config=None):
         return "forefront"
     elif model.startswith("anthropic."):
         return "bedrock"  # anthropic.* models go through AWS Bedrock
+    elif model.startswith("aws-bedrock:"):
+        return "aws-bedrock"  # aws-bedrock: prefix models
     elif model.startswith("anthropic/claude-"):
         return "openai"  # anthropic/ prefix models go through OpenRouter with OpenAI API
     elif model.startswith("claude-"):
