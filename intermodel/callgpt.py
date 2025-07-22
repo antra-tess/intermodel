@@ -1147,6 +1147,242 @@ async def complete(
                 "vendor": vendor,
             },
         }
+    elif vendor == "bedrock":
+        from anthropic import AnthropicBedrock
+        import os
+        import sys
+        import datetime
+
+        if num_completions not in [None, 1]:
+            raise NotImplementedError("Bedrock only supports num_completions=1")
+        
+        # Set up Bedrock client with AWS credentials
+        aws_region = kwargs.get("aws_region", os.getenv("AWS_REGION", "us-west-2"))
+        aws_access_key = kwargs.get("aws_access_key", os.getenv("AWS_ACCESS_KEY_ID"))
+        aws_secret_key = kwargs.get("aws_secret_key", os.getenv("AWS_SECRET_ACCESS_KEY"))
+        
+        if not aws_access_key or not aws_secret_key:
+            raise ValueError("AWS credentials required for Bedrock. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.")
+        
+        client = AnthropicBedrock(
+            aws_region=aws_region,
+            aws_access_key=aws_access_key,
+            aws_secret_key=aws_secret_key
+        )
+        
+        # Clean up AWS credentials from kwargs
+        for key in ["aws_region", "aws_access_key", "aws_secret_key"]:
+            if key in kwargs:
+                del kwargs[key]
+        
+        # Remove None values, Bedrock API doesn't like them
+        for key, value in dict(kwargs).items():
+            if value is None:
+                del kwargs[key]
+
+        # Handle thinking parameter for Bedrock Claude models
+        if model.startswith("anthropic.claude-") and "thinking" in kwargs:
+            thinking_config = kwargs.pop("thinking")
+            if isinstance(thinking_config, dict):
+                if "type" not in thinking_config:
+                    thinking_config["type"] = "enabled"
+                kwargs["thinking"] = thinking_config
+            elif isinstance(thinking_config, bool) and thinking_config:
+                kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": max(2048, max_tokens // 2)
+                }
+
+        if messages is None:
+            if (
+                message_history_format is not None
+                and message_history_format.is_chat()
+            ):
+                messages = [
+                    {
+                        "role": message["role"],
+                        "content": process_image_message(message["content"], role=message["role"]).get("content"),
+                    }
+                    for message in message_history_format.format_messages(
+                        prompt, "user"
+                    )
+                ]
+            else:
+                if kwargs.get("system", None) is None:
+                    kwargs["system"] = (
+                        "The assistant is in CLI simulation mode, and responds to the user's CLI commands only with the output of the command."
+                    )
+                    messages = [
+                        {"role": "user", "content": "<cmd>cat untitled.txt</cmd>"}
+                    ]
+                else:
+                    messages = []
+
+                # Process into intermediate format first
+                processed_messages = []
+                sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
+                
+                # Extract text parts and image URLs
+                text_parts = []
+                image_urls = []
+                
+                for i, section in enumerate(sections):
+                    if i % 2 == 0 and section.strip():
+                        text_parts.append(section.strip())
+                    elif i % 2 == 1:  # Image URL
+                        image_urls.append(section.strip())
+                
+                # Respect max_images parameter
+                if max_images == 0:
+                    # If max_images is 0, don't process any images
+                    image_urls = []
+                    print(f"[DEBUG] No images allowed", file=sys.stderr)
+                elif max_images < len(image_urls):
+                    # Only keep the last max_images images
+                    image_urls = image_urls[-max_images:]
+                    print(f"[DEBUG] Limiting to {len(image_urls)} images", file=sys.stderr)
+                else:
+                    print(f"[DEBUG] Processing {len(image_urls)} images", file=sys.stderr)
+
+                # For non-chat mode with images, create appropriate message structure
+                if len(image_urls) > 0:
+                    # Create user message maintaining order of text and images
+                    user_msg_parts = []
+                    assistant_text_parts = []
+                    img_index = 0
+                    last_image_index = -1
+                    
+                    # First find the last image section index
+                    for i, section in enumerate(sections):
+                        if i % 2 == 1:  # Image section
+                            if img_index < len(image_urls):
+                                last_image_index = i
+                                img_index += 1
+                    
+                    # Reset image index for actual processing
+                    img_index = 0
+                    
+                    # Process all sections in order
+                    for i, section in enumerate(sections):
+                        if i % 2 == 0:  # Text section
+                            if section.strip():
+                                if last_image_index == -1 or i < last_image_index:
+                                    # Text before or between images goes to user message
+                                    user_msg_parts.append(MessagePart(
+                                        type="text",
+                                        content=section.strip()
+                                    ))
+                                else:
+                                    # Text after last image goes to assistant
+                                    assistant_text_parts.append(section.strip())
+                        else:  # Image section
+                            if img_index < len(image_urls):
+                                user_msg_parts.append(MessagePart(
+                                    type="image",
+                                    content=image_urls[img_index],
+                                    mime_type=guess_mime_type(image_urls[img_index])
+                                ))
+                                img_index += 1
+                    
+                    # Add user message with ordered content
+                    if user_msg_parts:
+                        processed_messages.append(ProcessedMessage(
+                            role="user",
+                            parts=user_msg_parts
+                        ))
+                    
+                    # Add combined text parts as assistant message
+                    assistant_text = " ".join(assistant_text_parts)
+                    processed_messages.append(ProcessedMessage(
+                        role="assistant",
+                        parts=[MessagePart(type="text", content=assistant_text)]
+                    ))
+                else:
+                    # No images - just add all text as assistant message
+                    text_parts_combined = " ".join(text_parts)
+                    if text_parts_combined:
+                        processed_messages.append(ProcessedMessage(
+                            role="assistant",
+                            parts=[MessagePart(type="text", content=text_parts_combined)]
+                        ))
+
+                # Convert all processed messages to Anthropic format with URL validation
+                processed_messages = await asyncio.gather(*[
+                    convert_to_anthropic_format(msg, session) for msg in processed_messages
+                ])
+
+                messages = messages + processed_messages
+
+        # Log the request
+        request_log_file = None
+        if log_dir:
+            request_payload = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens or 16,
+                "temperature": temperature or 1,
+                "top_p": top_p,
+                "stop_sequences": stop or list(),
+            }
+            # Add any extra kwargs
+            for k, v in kwargs.items():
+                request_payload[k] = v
+            
+            request_log_file = _log_bedrock_request(request_payload, log_dir)
+
+        print(f"[DEBUG] Sending Bedrock request with model: {model}")
+        response = await client.messages.create(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens or 16,
+            temperature=temperature or 1,
+            top_p=top_p or 1,
+            stop_sequences=stop or list(),
+            **kwargs,
+        )
+
+        # Log the response
+        if log_dir:
+            _log_bedrock_response(response, log_dir, request_log_file)
+
+        if response.stop_reason == "stop_sequence":
+            finish_reason = "stop"
+        elif response.stop_reason == "max_tokens":
+            finish_reason = "length"
+        else:
+            finish_reason = "unknown"
+
+        # Extract thinking content and text if available
+        reasoning_content = None
+        text_content = ""
+        
+        for content_block in response.content:
+            if content_block.type == "thinking":
+                reasoning_content = content_block.thinking
+            elif content_block.type == "text":
+                text_content = content_block.text
+
+        return {
+            "prompt": {
+                "text": prompt,
+            },
+            "completions": [
+                {
+                    "text": text_content,
+                    "finish_reason": finish_reason,
+                    "reasoning_content": reasoning_content
+                }
+            ],
+            "model": model,
+            "id": response.id,
+            "created": datetime.datetime.now(),
+            "usage": {
+                "prompt_tokens": response.usage.input_tokens,
+                "completion_tokens": response.usage.output_tokens,
+                "charged_tokens": response.usage.input_tokens + response.usage.output_tokens,
+                "vendor": vendor,
+            },
+        }
     elif vendor == "replicate":
         import httpx
 
@@ -1745,7 +1981,7 @@ def tokenize(model: str, string: str) -> List[int]:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
     #print(f"[DEBUG] Tokenizing {model} with vendor {vendor}", file=sys.stderr)
-    if vendor == "openai" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("claude-3") or model.startswith(
+    if vendor == "openai" or vendor == "bedrock" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("anthropic.") or model.startswith("claude-3") or model.startswith(
             "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
             "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/"):
@@ -1758,7 +1994,7 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.get_encoding("gpt2")
         elif "deployedModel" in model: # Added for RunPod deployed models
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
-        elif model.startswith("anthropic/claude-") or model.startswith("claude-3"):
+        elif model.startswith("anthropic/claude-") or model.startswith("anthropic.") or model.startswith("claude-3"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("chatgpt-4o") or model.startswith("gpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
@@ -1931,6 +2167,8 @@ def pick_vendor(model, custom_config=None):
         return "ai21"
     elif "forefront" in model:
         return "forefront"
+    elif model.startswith("anthropic."):
+        return "bedrock"  # anthropic.* models go through AWS Bedrock
     elif model.startswith("anthropic/claude-"):
         return "openai"  # anthropic/ prefix models go through OpenRouter with OpenAI API
     elif model.startswith("claude-"):
@@ -2003,6 +2241,14 @@ def max_token_length_inner(model):
         return 2046
     elif model == "claude-3-sonnet-20240229-steering-preview":
         return int(18_000 * 0.7)
+    elif model.startswith("anthropic.claude-3"):
+        return 200_000 * 0.7
+    elif model.startswith("anthropic.claude-v2") or model.startswith("anthropic.claude-2"):
+        return 100_000 * 0.7
+    elif model.startswith("anthropic.claude-instant"):
+        return 100_000 * 0.7
+    elif model.startswith("anthropic.claude"):
+        return 100_000 * 0.7
     elif model.startswith("anthropic/claude-3"):
         return 200_000 * 0.7
     elif model.startswith("anthropic/claude-2.1"):
@@ -2666,6 +2912,137 @@ def _log_anthropic_response(response_data, log_dir, request_log_file=None):
          print(f"[ERROR] Failed to log Anthropic response to {filename}: {e}", file=sys.stderr)
 
     return filename
+
+
+def _log_bedrock_request(request_data, log_dir):
+    """Log Bedrock request data to a JSON file.
+    
+    Args:
+        request_data (dict): The request data to log
+        log_dir (str): The base directory for logs
+    """
+    import json
+    import os
+    import datetime
+    import glob
+    
+    # Create bedrock directory within log_dir if it doesn't exist
+    bedrock_log_dir = os.path.join(log_dir, "bedrock")
+    os.makedirs(bedrock_log_dir, exist_ok=True)
+    
+    # Find highest existing log number
+    existing_logs = glob.glob(os.path.join(bedrock_log_dir, "bedrock_request_*.json"))
+    if existing_logs:
+        try:
+            last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
+            next_num = last_num + 1
+        except (IndexError, ValueError):
+             # Handle cases where filename format might be unexpected
+             next_num = len(existing_logs) + 1
+    else:
+        next_num = 1
+
+    # Generate filename with timestamp and incrementing number
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = os.path.join(bedrock_log_dir, f"bedrock_request_{next_num:04d}_{timestamp}.json")
+
+    # Use a custom encoder to handle non-serializable objects (like potentially in messages)
+    class CustomEncoder(json.JSONEncoder):
+        def default(self, obj):
+            # Add handling for specific non-serializable types if encountered
+            return str(obj) # Basic fallback
+
+    # Write to file
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(request_data, f, indent=2, ensure_ascii=False, cls=CustomEncoder)
+        print(f"[DEBUG] Logged Bedrock request to {filename}", file=sys.stderr)
+    except TypeError as e:
+         print(f"[ERROR] Failed to serialize Bedrock request data for logging: {e}", file=sys.stderr)
+         # Attempt to log with a simple string representation as fallback
+         try:
+             with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
+                 f.write(str(request_data))
+             print(f"[DEBUG] Logged Bedrock request (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
+         except Exception as fallback_e:
+             print(f"[ERROR] Fallback Bedrock request logging failed: {fallback_e}", file=sys.stderr)
+    except Exception as e:
+         print(f"[ERROR] Failed to log Bedrock request to {filename}: {e}", file=sys.stderr)
+
+    return filename
+
+
+def _log_bedrock_response(response_data, log_dir, request_log_file=None):
+    """Log Bedrock response data to a JSON file.
+    
+    Args:
+        response_data: The response data (Anthropic response object or dict).
+        log_dir (str): The base directory for logs.
+        request_log_file: Optional path to the corresponding request log file.
+    """
+    import json
+    import os
+    import datetime
+    import glob
+    
+    # Create bedrock subdirectory within log_dir if it doesn't exist
+    bedrock_log_dir = os.path.join(log_dir, "bedrock")
+    os.makedirs(bedrock_log_dir, exist_ok=True)
+    
+    # Generate filename with timestamp and matching request number if available
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if request_log_file:
+        # Extract the request number to maintain relationship
+        basename = os.path.basename(request_log_file)
+        request_num = basename.split('_')[2]
+        filename = os.path.join(bedrock_log_dir, f"bedrock_response_{request_num}_{timestamp}.json")
+    else:
+        # Find highest existing log number if no request file
+        existing_logs = glob.glob(os.path.join(bedrock_log_dir, "bedrock_response_*.json"))
+        if existing_logs:
+            last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
+            next_num = last_num + 1
+        else:
+            next_num = 1
+        filename = os.path.join(bedrock_log_dir, f"bedrock_response_{next_num:04d}_{timestamp}.json")
+    
+    # Convert response to a serializable format
+    try:
+        if hasattr(response_data, 'model_dump'):
+            # Pydantic model
+            response_dict = response_data.model_dump()
+        elif hasattr(response_data, '__dict__'):
+            # Object with attributes
+            response_dict = {
+                "id": getattr(response_data, 'id', None),
+                "content": [
+                    {
+                        "type": block.type,
+                        "text": getattr(block, 'text', None)
+                    } for block in getattr(response_data, 'content', [])
+                ],
+                "model": getattr(response_data, 'model', None),
+                "role": getattr(response_data, 'role', None),
+                "stop_reason": getattr(response_data, 'stop_reason', None),
+                "usage": {
+                    "input_tokens": getattr(response_data.usage, 'input_tokens', None),
+                    "output_tokens": getattr(response_data.usage, 'output_tokens', None)
+                } if hasattr(response_data, 'usage') else None
+            }
+        else:
+            # Already a dict or string
+            response_dict = response_data
+    except Exception as e:
+        response_dict = {"error": f"Failed to serialize response: {str(e)}", "raw": str(response_data)}
+    
+    # Write to file
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(response_dict, f, indent=2, ensure_ascii=False)
+        print(f"[DEBUG] Logged Bedrock response to {filename}", file=sys.stderr)
+    except Exception as e:
+        print(f"[ERROR] Failed to log Bedrock response to {filename}: {e}", file=sys.stderr)
 
 
 def clear_url_validation_cache():
