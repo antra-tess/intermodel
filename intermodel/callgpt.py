@@ -198,6 +198,78 @@ def convert_to_gemini_format(processed_msg: ProcessedMessage) -> "types.Content"
     
     return types.Content(parts=parts, role=gemini_role)
 
+async def convert_to_bedrock_format(processed_msg: ProcessedMessage, session: Optional[aiohttp.ClientSession] = None) -> dict:
+    """Convert the intermediate message format to Bedrock's API format.
+    
+    Similar to Anthropic format but requires all images to be base64-encoded.
+    Bedrock doesn't support image URLs - only base64 data.
+    
+    Args:
+        processed_msg: A ProcessedMessage object containing text and/or images
+        session: Optional aiohttp session for downloading images
+        
+    Returns:
+        dict: Message formatted for Bedrock's API
+    """
+    content = []
+    
+    for part in processed_msg.parts:
+        if part.type == "text":
+            content.append({
+                "type": "text",
+                "text": part.content
+            })
+        elif part.type == "image":
+            # For Bedrock, all images must be base64-encoded
+            if part.content.startswith(('http://', 'https://')):
+                # Download and convert URL to base64
+                try:
+                    if session is None:
+                        import aiohttp
+                        async with aiohttp.ClientSession() as new_session:
+                            base64_data, mime_type = await download_and_encode_image_for_bedrock(part.content, new_session)
+                    else:
+                        base64_data, mime_type = await download_and_encode_image_for_bedrock(part.content, session)
+                    
+                    if base64_data is None:
+                        print(f"[WARNING] Skipping invalid/inaccessible image URL for Bedrock: {part.content[:100]}{'...' if len(part.content) > 100 else ''}", file=sys.stderr)
+                        content.append({
+                            "type": "text",
+                            "text": f"[Image URL was not accessible and has been skipped]"
+                        })
+                        continue
+                    
+                    content.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime_type or "image/jpeg",
+                            "data": base64_data
+                        }
+                    })
+                except Exception as e:
+                    print(f"[ERROR] Failed to download image for Bedrock: {str(e)}", file=sys.stderr)
+                    content.append({
+                        "type": "text",
+                        "text": f"[Error processing image URL: {part.content}]"
+                    })
+            else:
+                # Already base64 data, use as-is
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": part.mime_type or "image/jpeg",
+                        "data": part.content
+                    }
+                })
+    
+    return {
+        "role": "user" if processed_msg.role in ["user", "system"] else "assistant",
+        "content": content
+    }
+
+
 async def convert_to_anthropic_format(processed_msg: ProcessedMessage, session: Optional[aiohttp.ClientSession] = None) -> dict:
     """Convert the intermediate message format to Anthropic's API format.
     
@@ -1207,6 +1279,9 @@ async def complete(
                         prompt, "user"
                     )
                 ]
+                
+                # Convert image URLs to base64 for Bedrock compatibility
+                messages = await convert_messages_for_bedrock(messages, session)
             else:
                 if kwargs.get("system", None) is None:
                     kwargs["system"] = (
@@ -1306,12 +1381,16 @@ async def complete(
                             parts=[MessagePart(type="text", content=text_parts_combined)]
                         ))
 
-                # Convert all processed messages to Anthropic format with URL validation
+                # Convert all processed messages to Bedrock format with base64 encoding
                 processed_messages = await asyncio.gather(*[
-                    convert_to_anthropic_format(msg, session) for msg in processed_messages
+                    convert_to_bedrock_format(msg, session) for msg in processed_messages
                 ])
 
                 messages = messages + processed_messages
+        
+        # If messages were provided directly, ensure they're Bedrock-compatible
+        elif messages is not None:
+            messages = await convert_messages_for_bedrock(messages, session)
 
         # Log the request
         request_log_file = None
@@ -1860,6 +1939,123 @@ def download_and_process_image(url: str) -> bytes:
         
     print(f"[DEBUG] Downloaded image: {len(image_data)} bytes, mime type: {mime_type}", file=sys.stderr)
     return image_data
+
+
+async def convert_messages_for_bedrock(messages: List[dict], session: Optional[aiohttp.ClientSession] = None) -> List[dict]:
+    """Convert messages with image URLs to use base64 for Bedrock compatibility.
+    
+    Args:
+        messages: List of message dicts that may contain image URLs
+        session: Optional aiohttp session for downloading images
+        
+    Returns:
+        List[dict]: Messages with image URLs converted to base64
+    """
+    if not messages:
+        return messages
+    
+    # Create session if not provided
+    if session is None:
+        import aiohttp
+        async with aiohttp.ClientSession() as new_session:
+            return await convert_messages_for_bedrock(messages, new_session)
+    
+    converted_messages = []
+    
+    for message in messages:
+        content = message.get("content", "")
+        
+        # If content is a list (multimodal), process each part
+        if isinstance(content, list):
+            new_content = []
+            for part in content:
+                if part.get("type") == "image" and "source" in part:
+                    source = part["source"]
+                    if source.get("type") == "url":
+                        # Convert URL to base64
+                        url = source["url"]
+                        try:
+                            base64_data, mime_type = await download_and_encode_image_for_bedrock(url, session)
+                            if base64_data:
+                                new_content.append({
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": mime_type or "image/jpeg",
+                                        "data": base64_data
+                                    }
+                                })
+                            else:
+                                # Replace with text indicating skipped image
+                                new_content.append({
+                                    "type": "text",
+                                    "text": f"[Image URL was not accessible and has been skipped]"
+                                })
+                        except Exception as e:
+                            print(f"[ERROR] Failed to convert image URL for Bedrock: {str(e)}", file=sys.stderr)
+                            new_content.append({
+                                "type": "text",
+                                "text": f"[Error processing image URL]"
+                            })
+                    else:
+                        # Already base64 or other format, keep as-is
+                        new_content.append(part)
+                else:
+                    # Non-image part, keep as-is
+                    new_content.append(part)
+            
+            converted_messages.append({
+                **message,
+                "content": new_content
+            })
+        else:
+            # Text-only content, keep as-is
+            converted_messages.append(message)
+    
+    return converted_messages
+
+
+async def download_and_encode_image_for_bedrock(url: str, session: aiohttp.ClientSession) -> Tuple[Optional[str], Optional[str]]:
+    """Download image and encode it as base64 for Bedrock.
+    
+    Args:
+        url (str): URL of the image to download
+        session: aiohttp session for downloading
+        
+    Returns:
+        Tuple[Optional[str], Optional[str]]: (base64_data, mime_type) or (None, None) if failed
+    """
+    import base64
+    import sys
+
+    print(f"[DEBUG] Downloading and encoding image for Bedrock from: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
+    
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            response.raise_for_status()
+            image_data = await response.read()
+            mime_type = response.headers.get("content-type") or guess_mime_type(url)
+            
+            # Check image size
+            size_mb = len(image_data) / (1024 * 1024)
+            if size_mb > 5:
+                print(f"[WARNING] Image size {size_mb:.2f}MB exceeds 5MB limit for Bedrock, skipping", file=sys.stderr)
+                return None, None
+            
+            # Skip GIFs as they're often not well supported
+            if mime_type and mime_type.lower() == "image/gif":
+                print(f"[DEBUG] Skipping GIF image for Bedrock", file=sys.stderr)
+                return None, None
+                
+            # Encode to base64
+            base64_data = base64.b64encode(image_data).decode('utf-8')
+            print(f"[DEBUG] Encoded image for Bedrock: {len(image_data)} bytes, mime type: {mime_type}", file=sys.stderr)
+            
+            return base64_data, mime_type
+            
+    except Exception as e:
+        print(f"[ERROR] Failed to download/encode image for Bedrock: {str(e)}", file=sys.stderr)
+        return None, None
 
 
 def download_and_encode_image(url: str, skip_gifs: bool = False) -> Tuple[Optional[str], Optional[str]]:
