@@ -1113,6 +1113,7 @@ async def complete(
                         ))
 
                 # Convert all processed messages to Anthropic format with URL validation
+                import asyncio
                 processed_messages = await asyncio.gather(*[
                     convert_to_anthropic_format(msg, session) for msg in processed_messages
                 ])
