@@ -1410,7 +1410,7 @@ async def complete(
             request_log_file = _log_bedrock_request(request_payload, log_dir)
 
         print(f"[DEBUG] Sending Bedrock request with model: {model}")
-        response = await client.messages.create(
+        response = client.messages.create(
             model=model,
             messages=messages,
             max_tokens=max_tokens or 16,
