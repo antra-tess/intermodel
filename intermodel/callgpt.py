@@ -1383,6 +1383,7 @@ async def complete(
                         ))
 
                 # Convert all processed messages to Bedrock format with base64 encoding
+                import asyncio
                 processed_messages = await asyncio.gather(*[
                     convert_to_bedrock_format(msg, session) for msg in processed_messages
                 ])
