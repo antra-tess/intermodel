@@ -1410,14 +1410,19 @@ async def complete(
             request_log_file = _log_bedrock_request(request_payload, log_dir)
 
         print(f"[DEBUG] Sending Bedrock request with model: {model}")
-        response = client.messages.create(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens or 16,
-            temperature=temperature or 1,
-            top_p=top_p or 1,
-            stop_sequences=stop or list(),
-            **kwargs,
+        # Run synchronous Bedrock call in thread pool to avoid blocking event loop
+        import asyncio
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: client.messages.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens or 16,
+                temperature=temperature or 1,
+                top_p=top_p or 1,
+                stop_sequences=stop or list(),
+                **kwargs,
+            )
         )
 
         # Log the response
