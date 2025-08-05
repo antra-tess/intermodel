@@ -1137,7 +1137,7 @@ async def complete(
             "model": model,
             "messages": messages,
             "max_tokens": max_tokens or 16,
-            "temperature": temperature or 1,
+            "temperature": temperature if model != "claude-opus-4-1-20250805" else None,
             "top_p": top_p if 'thinking' not in kwargs and model != "claude-opus-4-1-20250805" else None,
             "stop_sequences": stop or list(),
         }
