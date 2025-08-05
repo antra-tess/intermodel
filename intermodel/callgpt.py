@@ -1179,15 +1179,25 @@ async def complete(
                 **kwargs,
             )
         else:
-            response = await client.messages.create(
-                model=model,
-                messages=messages,
-                max_tokens=max_tokens or 16,
-                temperature=temperature or 1,
-                top_p=top_p if model != "claude-opus-4-1-20250805" else None,
-                stop_sequences=stop or list(),
-                **kwargs,
-            )
+            if model == "claude-opus-4-1-20250805":
+                response = await client.messages.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens or 16,
+                    temperature=temperature or 1,
+                    stop_sequences=stop or list(),
+                    **kwargs,
+                )
+            else:
+                response = await client.messages.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens or 16,
+                    temperature=temperature,
+                    top_p=top_p,
+                    stop_sequences=stop or list(),
+                    **kwargs,
+                )
 
         # Log the response
         if log_dir:
