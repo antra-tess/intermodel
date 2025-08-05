@@ -1137,7 +1137,7 @@ async def complete(
             "model": model,
             "messages": messages,
             "max_tokens": max_tokens or 16,
-            "temperature": temperature if model != "claude-opus-4-1-20250805" else None,
+            "temperature": temperature,
             "top_p": top_p if 'thinking' not in kwargs and model != "claude-opus-4-1-20250805" else None,
             "stop_sequences": stop or list(),
         }
@@ -1166,12 +1166,13 @@ async def complete(
         if log_dir:
             request_log_file = _log_anthropic_request(request_payload, log_dir)
 
+
         if 'thinking' in kwargs:
             response = await client.messages.create(
                 model=model,
                 messages=messages,
                 max_tokens=max_tokens or 16,
-                temperature=temperature or 1,
+                temperature=temperature,
                 stop_sequences=stop or list(),
                 **kwargs,
             )
@@ -1185,6 +1186,9 @@ async def complete(
                 stop_sequences=stop or list(),
                 **kwargs,
             )
+
+        if model == "claude-opus-4-1-20250805":
+            kwargs["top_p"] = None
 
         # Log the response
         if log_dir:
