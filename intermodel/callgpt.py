@@ -521,7 +521,7 @@ async def complete(
             "n": num_completions,
             **rest,
         }
-        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini"):
+        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot":
             api_arguments["max_tokens"] = max_tokens
 
         # Only add audio-related parameters for models that support them
@@ -548,7 +548,7 @@ async def complete(
                 del api_arguments[key]
         # Limit stop sequences for OpenAI
         if "stop" in api_arguments and isinstance(api_arguments["stop"], list):
-            if not model.startswith("o3") and not model.startswith("o4-mini"):
+            if not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot":
                 if len(api_arguments["stop"]) > 4:
                     print(f"[DEBUG] OpenAI only supports up to 4 stop sequences. Truncating from {len(api_arguments['stop'])}.", file=sys.stderr)
                     api_arguments["stop"] = api_arguments["stop"][:4]
@@ -603,6 +603,7 @@ async def complete(
                 model.startswith("o3") or
                 model.startswith("o4-mini") or
                 model.startswith("moonshotai/") or
+                model.startswith("hermes-4") or
                 is_anthropic_openrouter
             )
         ) and not is_base_model:
@@ -1137,7 +1138,7 @@ async def complete(
             "messages": messages,
             "max_tokens": max_tokens or 16,
             "temperature": temperature or 1,
-            "top_p": top_p if 'thinking' not in kwargs else None,
+            "top_p": top_p if 'thinking' not in kwargs and model != "claude-opus-4-1-20250805" else None,
             "stop_sequences": stop or list(),
         }
         # Add any extra kwargs
@@ -2189,10 +2190,10 @@ def tokenize(model: str, string: str) -> List[int]:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
     #print(f"[DEBUG] Tokenizing {model} with vendor {vendor}", file=sys.stderr)
-    if vendor == "openai" or vendor == "bedrock" or vendor == "aws-bedrock" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("anthropic.") or model.startswith("claude-3") or model.startswith(
+    if vendor == "openai" or vendor == "bedrock" or vendor == "aws-bedrock" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("anthropic.") or model.startswith("claude-3") or model == "claude-opus-4-1-20250805" or model.startswith(
             "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
-            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/"):
+            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/") or model.startswith("hermes-4"):
         # tiktoken internally caches loaded tokenizers
         #print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
 
@@ -2202,7 +2203,7 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.get_encoding("gpt2")
         elif "deployedModel" in model: # Added for RunPod deployed models
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
-        elif model.startswith("anthropic/claude-") or model.startswith("anthropic.") or model.startswith("claude-3"):
+        elif model.startswith("anthropic/claude-") or model.startswith("anthropic.") or model.startswith("claude-3") or model == "claude-opus-4-1-20250805":
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("chatgpt-4o") or model.startswith("gpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
@@ -2227,6 +2228,8 @@ def tokenize(model: str, string: str) -> List[int]:
         elif model.startswith("deepseek-ai/DeepSeek-R1-Zero"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("meta-llama/llama-3.1-405b"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")
+        elif model.startswith("hermes-4"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("gemini-"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
@@ -2391,6 +2394,8 @@ def pick_vendor(model, custom_config=None):
         return "gemini"  # Gemini models go directly
     elif model.startswith("moonshotai/"):
         return "openai"  # Moonshot models use OpenAI-compatible API
+    elif model.startswith("hermes-4"):
+        return "openai"  # Hermes 4 models use OpenAI-compatible API
     elif "/" in model:
         return "huggingface"
     else:
@@ -2421,6 +2426,8 @@ def max_token_length_inner(model):
         return 128_000
     elif model.startswith("aion"):
         return 30_000  # 32k context window
+    elif model.startswith("hermes-4"):
+        return 100_000  # 100k context window
     elif model == "code-davinci-002":
         return 8001
     elif model.startswith("code"):
@@ -2469,6 +2476,8 @@ def max_token_length_inner(model):
         return 100_000 * 0.7
     elif model.startswith("claude-3"):
         return 200_000 * 0.7
+    elif model == "claude-opus-4-1-20250805":
+        return 200_000 * 0.7  # Claude Opus 4.1 has similar context to Claude 3
     elif model.startswith("claude-2.1"):
         return 200_000 * 0.7
     elif model.startswith("claude-2"):
