@@ -521,8 +521,13 @@ async def complete(
             "n": num_completions,
             **rest,
         }
-        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot":
+        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and not model.startswith("gpt-5"):
             api_arguments["max_tokens"] = max_tokens
+        elif model.startswith("gpt-5"):
+            api_arguments["max_completion_tokens"] = max_tokens
+            # Add verbosity parameter for GPT-5 with default "low"
+            if "verbosity" not in api_arguments:
+                api_arguments["verbosity"] = "low"
 
         # Only add audio-related parameters for models that support them
         if is_openai_audio_model(model):
@@ -548,7 +553,7 @@ async def complete(
                 del api_arguments[key]
         # Limit stop sequences for OpenAI
         if "stop" in api_arguments and isinstance(api_arguments["stop"], list):
-            if not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot":
+            if not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and not model.startswith("gpt-5"):
                 if len(api_arguments["stop"]) > 4:
                     print(f"[DEBUG] OpenAI only supports up to 4 stop sequences. Truncating from {len(api_arguments['stop'])}.", file=sys.stderr)
                     api_arguments["stop"] = api_arguments["stop"][:4]
