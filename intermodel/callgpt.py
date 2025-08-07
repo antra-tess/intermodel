@@ -585,6 +585,7 @@ async def complete(
                 (message_history_format is not None and message_history_format.is_chat()) or
                 model.startswith("gpt-3.5") or
                 model.startswith("gpt-4") or
+                model.startswith("gpt-5") or
                 model.startswith("o1") or
                 model.startswith("openpipe:") or
                 model.startswith("gpt4") or
@@ -2224,6 +2225,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("gpt-4.1"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
+        elif model.startswith("gpt-5"):
+            tokenizer = tiktoken.encoding_for_model("gpt-4o")  # Use gpt-4o tokenizer for GPT-5
         elif model.startswith("grok"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("aion"):
@@ -2377,6 +2380,7 @@ def pick_vendor(model, custom_config=None):
         or "text-moderation-" in model
         or model.startswith("ft-")
         or model.startswith("gpt-4")
+        or model.startswith("gpt-5")
         or model.startswith("gpt-3.5-")
         or model.startswith("o1-")
         or model.startswith("gpt-4.")
@@ -2435,6 +2439,8 @@ def max_token_length_inner(model):
         return 128_000  # Assume gpt-4.1 has 128k context window like 4.5
     elif model.startswith("gpt-4"):
         return 8000
+    elif model.startswith("gpt-5"):
+        return 128_000  # Assume GPT-5 has similar context to GPT-4o
     elif model.startswith("grok"):
         return 128_000
     elif model.startswith("aion"):
