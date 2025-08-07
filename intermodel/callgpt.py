@@ -371,6 +371,7 @@ async def complete(
     messages = kwargs.get("messages", None)
     name = kwargs.get("name", None)
     max_images = kwargs.get("max_images", 10)  # Default to 10 images
+    reasoning_effort = kwargs.get("reasoning_effort", None)  # Extract reasoning_effort before kwargs is reassigned
     kwargs = kwargs.get("continuation_options", {})
     tokenize_as = parse_model_string(MODEL_ALIASES.get(model, model)).tokenize_as
     model = parse_model_string(MODEL_ALIASES.get(model, model)).model
@@ -527,7 +528,10 @@ async def complete(
             api_arguments["max_completion_tokens"] = max_tokens
             # Add verbosity parameter for GPT-5 with default "low"
             if "verbosity" not in api_arguments:
-                api_arguments["verbosity"] = "low"
+                api_arguments["verbosity"] = "medium"
+            # Add reasoning_effort parameter for GPT-5 if provided
+            if reasoning_effort is not None:
+                api_arguments["reasoning_effort"] = reasoning_effort
 
         # Only add audio-related parameters for models that support them
         if is_openai_audio_model(model):
