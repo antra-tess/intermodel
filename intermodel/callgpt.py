@@ -526,8 +526,8 @@ async def complete(
             api_arguments["max_tokens"] = max_tokens
         elif model.startswith("gpt-5"):
             api_arguments["max_completion_tokens"] = max_tokens
-            # Add verbosity parameter for GPT-5 with default "low"
-            if "verbosity" not in api_arguments:
+            # Add verbosity parameter for GPT-5 models (except gpt-5-chat variants)
+            if not model.startswith("gpt-5-chat") and "verbosity" not in api_arguments:
                 api_arguments["verbosity"] = "medium"
             # Add reasoning_effort parameter for GPT-5 if provided
             if reasoning_effort is not None:
