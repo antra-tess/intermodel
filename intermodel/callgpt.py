@@ -157,6 +157,7 @@ class MessagePart:
     type: str  # "text" or "image"
     content: str  # text content or image URL
     mime_type: Optional[str] = None  # for images
+    cache_control: Optional[dict] = None  # for Anthropic prompt caching
 
 @dataclasses.dataclass
 class ProcessedMessage:
@@ -287,15 +288,20 @@ async def convert_to_anthropic_format(processed_msg: ProcessedMessage, session: 
         - Maximum 5MB per image
         - If image is larger than 8000x8000px (or 2000x2000px for >20 images), it will be rejected
         - URLs are validated before being sent to ensure they're accessible
+        - Supports cache_control for prompt caching (beta feature)
     """
     content = []
     
     for part in processed_msg.parts:
         if part.type == "text":
-            content.append({
+            text_block = {
                 "type": "text",
                 "text": part.content
-            })
+            }
+            # Add cache_control if present
+            if part.cache_control:
+                text_block["cache_control"] = part.cache_control
+            content.append(text_block)
         elif part.type == "image":
             # For URLs, validate and use the URL source type
             if part.content.startswith(('http://', 'https://')):
@@ -363,6 +369,8 @@ async def complete(
     voice: Optional[str] = None,
     force_api_mode=None,
     log_dir="intermodel_logs",  # Add log_dir parameter with a default
+    cache_breakpoints: bool = False,  # Enable cache breakpoint processing for Anthropic
+    cache_type: str = "ephemeral",  # Type of cache control: "ephemeral", "5min", "1hour"
     **kwargs,
 ):
     modalities = kwargs.pop("modalities", None)
@@ -1024,15 +1032,43 @@ async def complete(
                 message_history_format is not None
                 and message_history_format.is_chat()
             ):
-                messages = [
-                    {
-                        "role": message["role"],
-                        "content": process_image_message(message["content"], role=message["role"]).get("content"),
-                    }
-                    for message in message_history_format.format_messages(
-                        prompt, "user"
-                    )
-                ]
+                if cache_breakpoints:
+                    # Process messages with cache marker support
+                    processed_messages = []
+                    for message in message_history_format.format_messages(prompt, "user"):
+                        if isinstance(message["content"], str):
+                            # Process both cache markers and images
+                            parts = process_message_with_cache_and_images(
+                                message["content"], 
+                                cache_type=cache_type
+                            )
+                            processed_messages.append(ProcessedMessage(
+                                role=message["role"],
+                                parts=parts
+                            ))
+                        else:
+                            # If content is already processed, just wrap it
+                            processed_messages.append(ProcessedMessage(
+                                role=message["role"],
+                                parts=[MessagePart(type="text", content=str(message["content"]))]
+                            ))
+                    
+                    # Convert to Anthropic format
+                    import asyncio
+                    messages = await asyncio.gather(*[
+                        convert_to_anthropic_format(msg, session) for msg in processed_messages
+                    ])
+                else:
+                    # Original processing without cache markers
+                    messages = [
+                        {
+                            "role": message["role"],
+                            "content": process_image_message(message["content"], role=message["role"]).get("content"),
+                        }
+                        for message in message_history_format.format_messages(
+                            prompt, "user"
+                        )
+                    ]
             else:
                 if kwargs.get("system", None) is None:
                     kwargs["system"] = (
@@ -1046,94 +1082,135 @@ async def complete(
 
                 # Process into intermediate format first
                 processed_messages = []
-                sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
                 
-                # Extract text parts and image URLs
-                text_parts = []
-                image_urls = []
-                
-                for i, section in enumerate(sections):
-                    if i % 2 == 0 and section.strip():
-                        text_parts.append(section.strip())
-                    elif i % 2 == 1:  # Image URL
-                        image_urls.append(section.strip())
-                
-                # Respect max_images parameter
-                if max_images == 0:
-                    # If max_images is 0, don't process any images
-                    image_urls = []
-                    print(f"[DEBUG] No images allowed", file=sys.stderr)
-                elif max_images < len(image_urls):
-                    # Only keep the last max_images images
-                    image_urls = image_urls[-max_images:]
-                    print(f"[DEBUG] Limiting to {len(image_urls)} images", file=sys.stderr)
-                else:
-                    print(f"[DEBUG] Processing {len(image_urls)} images", file=sys.stderr)
-
-                # For non-chat mode with images, we need to:
-                # 1. Keep all content in order (text/image/text/image) in the USER message until the last image
-                # 2. Combine all remaining text into the ASSISTANT message
-                
-                if len(image_urls) > 0:
-                    # Create user message maintaining order of text and images
-                    user_msg_parts = []
-                    assistant_text_parts = []
-                    img_index = 0
-                    last_image_index = -1
+                if cache_breakpoints:
+                    # Process with cache marker support for prefill mode
+                    parts = process_message_with_cache_and_images(prompt, cache_type=cache_type)
                     
-                    # First find the last image section index
-                    for i, section in enumerate(sections):
-                        if i % 2 == 1:  # Image section
-                            if img_index < len(image_urls):
-                                last_image_index = i
-                                img_index += 1
+                    # In prefill mode, we need to split content appropriately
+                    # Content up to and including the last image goes to user message
+                    # Content after the last image goes to assistant message
+                    last_non_text_idx = -1
+                    for idx, part in enumerate(parts):
+                        if part.type != "text":
+                            last_non_text_idx = idx
                     
-                    # Reset image index for actual processing
-                    img_index = 0
-                    
-                    # Process all sections in order
-                    for i, section in enumerate(sections):
-                        if i % 2 == 0:  # Text section
-                            if section.strip():
-                                if last_image_index == -1 or i < last_image_index:
-                                    # Text before or between images goes to user message
-                                    user_msg_parts.append(MessagePart(
-                                        type="text",
-                                        content=section.strip()
-                                    ))
-                                else:
-                                    # Text after last image goes to assistant
-                                    assistant_text_parts.append(section.strip())
-                        else:  # Image section
-                            if img_index < len(image_urls):
-                                user_msg_parts.append(MessagePart(
-                                    type="image",
-                                    content=image_urls[img_index],
-                                    mime_type=guess_mime_type(image_urls[img_index])
-                                ))
-                                img_index += 1
-                    
-                    # Add user message with ordered content
-                    if user_msg_parts:
-                        processed_messages.append(ProcessedMessage(
-                            role="user",
-                            parts=user_msg_parts
-                        ))
-                    
-                    # Add combined text parts as assistant message
-                    assistant_text = " ".join(assistant_text_parts)
-                    processed_messages.append(ProcessedMessage(
-                        role="assistant",
-                        parts=[MessagePart(type="text", content=assistant_text)]
-                    ))
-                else:
-                    # No images - just add all text as assistant message
-                    text_parts_combined = " ".join(text_parts)
-                    if text_parts_combined:
+                    if last_non_text_idx == -1:
+                        # No images, all text goes to assistant message
                         processed_messages.append(ProcessedMessage(
                             role="assistant",
-                            parts=[MessagePart(type="text", content=text_parts_combined)]
+                            parts=parts
                         ))
+                    else:
+                        # Split at the last image
+                        user_parts = parts[:last_non_text_idx + 1]
+                        assistant_parts = parts[last_non_text_idx + 1:]
+                        
+                        if user_parts:
+                            processed_messages.append(ProcessedMessage(
+                                role="user",
+                                parts=user_parts
+                            ))
+                        if assistant_parts:
+                            processed_messages.append(ProcessedMessage(
+                                role="assistant",
+                                parts=assistant_parts
+                            ))
+                    
+                    # Skip the original image/text processing since we've already handled it
+                    skip_original_processing = True
+                else:
+                    skip_original_processing = False
+                    # Original processing without cache markers
+                    sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
+                    
+                    # Extract text parts and image URLs
+                    text_parts = []
+                    image_urls = []
+                
+                if not skip_original_processing:
+                    for i, section in enumerate(sections):
+                        if i % 2 == 0 and section.strip():
+                            text_parts.append(section.strip())
+                        elif i % 2 == 1:  # Image URL
+                            image_urls.append(section.strip())
+                    
+                    # Respect max_images parameter
+                    if max_images == 0:
+                        # If max_images is 0, don't process any images
+                        image_urls = []
+                        print(f"[DEBUG] No images allowed", file=sys.stderr)
+                    elif max_images < len(image_urls):
+                        # Only keep the last max_images images
+                        image_urls = image_urls[-max_images:]
+                        print(f"[DEBUG] Limiting to {len(image_urls)} images", file=sys.stderr)
+                    else:
+                        print(f"[DEBUG] Processing {len(image_urls)} images", file=sys.stderr)
+
+                    # For non-chat mode with images, we need to:
+                    # 1. Keep all content in order (text/image/text/image) in the USER message until the last image
+                    # 2. Combine all remaining text into the ASSISTANT message
+                    
+                    if len(image_urls) > 0:
+                        # Create user message maintaining order of text and images
+                        user_msg_parts = []
+                        assistant_text_parts = []
+                        img_index = 0
+                        last_image_index = -1
+                        
+                        # First find the last image section index
+                        for i, section in enumerate(sections):
+                            if i % 2 == 1:  # Image section
+                                if img_index < len(image_urls):
+                                    last_image_index = i
+                                    img_index += 1
+                        
+                        # Reset image index for actual processing
+                        img_index = 0
+                        
+                        # Process all sections in order
+                        for i, section in enumerate(sections):
+                            if i % 2 == 0:  # Text section
+                                if section.strip():
+                                    if last_image_index == -1 or i < last_image_index:
+                                        # Text before or between images goes to user message
+                                        user_msg_parts.append(MessagePart(
+                                            type="text",
+                                            content=section.strip()
+                                        ))
+                                    else:
+                                        # Text after last image goes to assistant
+                                        assistant_text_parts.append(section.strip())
+                            else:  # Image section
+                                if img_index < len(image_urls):
+                                    user_msg_parts.append(MessagePart(
+                                        type="image",
+                                        content=image_urls[img_index],
+                                        mime_type=guess_mime_type(image_urls[img_index])
+                                    ))
+                                    img_index += 1
+                        
+                        # Add user message with ordered content
+                        if user_msg_parts:
+                            processed_messages.append(ProcessedMessage(
+                                role="user",
+                                parts=user_msg_parts
+                            ))
+                        
+                        # Add combined text parts as assistant message
+                        assistant_text = " ".join(assistant_text_parts)
+                        processed_messages.append(ProcessedMessage(
+                            role="assistant",
+                            parts=[MessagePart(type="text", content=assistant_text)]
+                        ))
+                    else:
+                        # No images - just add all text as assistant message
+                        text_parts_combined = " ".join(text_parts)
+                        if text_parts_combined:
+                            processed_messages.append(ProcessedMessage(
+                                role="assistant",
+                                parts=[MessagePart(type="text", content=text_parts_combined)]
+                            ))
 
                 # Convert all processed messages to Anthropic format with URL validation
                 import asyncio
@@ -1148,6 +1225,12 @@ async def complete(
             if "steering" in kwargs:
                 kwargs["extra_body"] = {"steering": kwargs["steering"]}
                 del kwargs["steering"]
+        
+        # Add cache control beta header if cache_breakpoints is enabled
+        if cache_breakpoints:
+            if "extra_headers" not in kwargs:
+                kwargs["extra_headers"] = {}
+            kwargs["extra_headers"]["anthropic-beta"] = "prompt-caching-2024-07-31"
 
         # Create a deep copy of the request to log
         request_payload = {
@@ -2146,6 +2229,135 @@ def download_and_encode_image(url: str, skip_gifs: bool = False) -> Tuple[Option
     except Exception as e:
         print(f"[ERROR] Failed to encode image: {str(e)}", file=sys.stderr)
         raise
+
+
+def process_cache_markers(content_string: str, cache_type: str = "ephemeral") -> List[MessagePart]:
+    """Process a message that may contain cache breakpoint markers.
+    
+    Args:
+        content_string (str): The message content that may contain cache markers
+        cache_type (str): The type of cache control to apply: "ephemeral", "5min", "1hour"
+        
+    Returns:
+        List[MessagePart]: A list of MessagePart objects with cache_control metadata
+    
+    Notes:
+        - Cache markers are specified using <|cache_breakpoint|>
+        - Content before the last cache marker gets cache_control
+        - Content after the last cache marker does not get cached
+        - Cache types:
+          - "ephemeral": Default caching behavior
+          - "5min": Cache for 5 minutes (300 seconds)
+          - "1hour": Cache for 1 hour (3600 seconds)
+    """
+    import re
+    
+    # Map user-friendly cache types to API values
+    cache_type_map = {
+        "ephemeral": {"type": "ephemeral"},
+        "5min": {"type": "ephemeral", "ttl": 300},
+        "1hour": {"type": "ephemeral", "ttl": 3600}
+    }
+    
+    cache_control = cache_type_map.get(cache_type, {"type": "ephemeral"})
+    
+    sections = re.split(r"<\|cache_breakpoint\|>", content_string)
+    if len(sections) == 1:
+        # No cache markers, return single part without cache control
+        return [MessagePart(type="text", content=content_string)]
+    
+    parts = []
+    for i, section in enumerate(sections[:-1]):  # All sections except the last get cached
+        if section.strip():
+            parts.append(MessagePart(
+                type="text",
+                content=section,
+                cache_control=cache_control
+            ))
+    
+    # Last section doesn't get cache control
+    if sections[-1].strip():
+        parts.append(MessagePart(
+            type="text",
+            content=sections[-1]
+        ))
+    
+    return parts
+
+
+def process_message_with_cache_and_images(content_string: str, cache_type: str = "ephemeral", skip_gifs: bool = False) -> List[MessagePart]:
+    """Process a message that may contain both cache markers and image markers.
+    
+    Args:
+        content_string (str): The message content that may contain cache and/or image markers
+        cache_type (str): The type of cache control to apply: "ephemeral", "5min", "1hour"
+        skip_gifs (bool): Whether to skip GIF images
+        
+    Returns:
+        List[MessagePart]: A list of MessagePart objects with appropriate metadata
+    
+    Notes:
+        - Cache markers: <|cache_breakpoint|>
+        - Image markers: <|begin_of_img_url|>URL<|end_of_img_url|>
+        - Cache markers apply to all content (text and images) before them
+        - Cache types:
+          - "ephemeral": Default caching behavior
+          - "5min": Cache for 5 minutes (300 seconds)
+          - "1hour": Cache for 1 hour (3600 seconds)
+    """
+    import re
+    
+    # Map user-friendly cache types to API values
+    cache_type_map = {
+        "ephemeral": {"type": "ephemeral"},
+        "5min": {"type": "ephemeral", "ttl": 300},
+        "1hour": {"type": "ephemeral", "ttl": 3600}
+    }
+    
+    cache_control = cache_type_map.get(cache_type, {"type": "ephemeral"})
+    
+    # First split by cache markers
+    cache_sections = re.split(r"<\|cache_breakpoint\|>", content_string)
+    
+    all_parts = []
+    
+    for cache_idx, cache_section in enumerate(cache_sections):
+        # Determine if this section should have cache control
+        should_cache = cache_idx < len(cache_sections) - 1
+        
+        # Now process images within this cache section
+        image_sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", cache_section)
+        
+        if len(image_sections) == 1:
+            # No images in this section
+            if cache_section.strip():
+                all_parts.append(MessagePart(
+                    type="text",
+                    content=cache_section.strip(),
+                    cache_control=cache_control if should_cache else None
+                ))
+        else:
+            # Process sections with images
+            for i, section in enumerate(image_sections):
+                if i % 2 == 0:  # Text section
+                    if section.strip():
+                        all_parts.append(MessagePart(
+                            type="text",
+                            content=section.strip(),
+                            cache_control=cache_control if should_cache else None
+                        ))
+                else:  # Image URL section
+                    # For images, we include them in the message parts but they won't be cached by Anthropic
+                    # Only text content can have cache_control
+                    mime_type = guess_mime_type(section)
+                    if not (skip_gifs and mime_type == "image/gif"):
+                        all_parts.append(MessagePart(
+                            type="image",
+                            content=section,
+                            mime_type=mime_type
+                        ))
+    
+    return all_parts
 
 
 def process_image_message(content_string, skip_gifs=False, role="user"):
