@@ -370,7 +370,7 @@ async def complete(
     force_api_mode=None,
     log_dir="intermodel_logs",  # Add log_dir parameter with a default
     cache_breakpoints: bool = False,  # Enable cache breakpoint processing for Anthropic
-    cache_type: str = "ephemeral",  # Type of cache control: "ephemeral", "5min", "1hour"
+    cache_type: str = "ephemeral",  # Type of cache control: "ephemeral", "5m", "1h"
     **kwargs,
 ):
     modalities = kwargs.pop("modalities", None)
@@ -1226,11 +1226,19 @@ async def complete(
                 kwargs["extra_body"] = {"steering": kwargs["steering"]}
                 del kwargs["steering"]
         
-        # Add cache control beta header if cache_breakpoints is enabled
+        # Add cache control beta headers if cache_breakpoints is enabled
         if cache_breakpoints:
             if "extra_headers" not in kwargs:
                 kwargs["extra_headers"] = {}
-            kwargs["extra_headers"]["anthropic-beta"] = "prompt-caching-2024-07-31"
+            existing_beta = kwargs["extra_headers"].get("anthropic-beta", "")
+            tokens = [t.strip() for t in existing_beta.split(",") if t.strip()]
+            for token in [
+                "prompt-caching-2024-07-31",
+                "extended-cache-ttl-2025-04-11",
+            ]:
+                if token not in tokens:
+                    tokens.append(token)
+            kwargs["extra_headers"]["anthropic-beta"] = ", ".join(tokens)
 
         # Create a deep copy of the request to log
         request_payload = {
@@ -2236,7 +2244,7 @@ def process_cache_markers(content_string: str, cache_type: str = "ephemeral") ->
     
     Args:
         content_string (str): The message content that may contain cache markers
-        cache_type (str): The type of cache control to apply: "ephemeral", "5min", "1hour"
+        cache_type (str): The type of cache control to apply: "ephemeral", "5m", "1h"
         
     Returns:
         List[MessagePart]: A list of MessagePart objects with cache_control metadata
@@ -2247,16 +2255,19 @@ def process_cache_markers(content_string: str, cache_type: str = "ephemeral") ->
         - Content after the last cache marker does not get cached
         - Cache types:
           - "ephemeral": Default caching behavior
-          - "5min": Cache for 5 minutes (300 seconds)
-          - "1hour": Cache for 1 hour (3600 seconds)
+          - "5m": Cache for 5 minutes
+          - "1h": Cache for 1 hour
     """
     import re
     
-    # Map user-friendly cache types to API values
+    # Map user-friendly cache types to API values. Support legacy aliases for backwards compatibility.
     cache_type_map = {
         "ephemeral": {"type": "ephemeral"},
-        "5min": {"type": "ephemeral", "ttl": 300},
-        "1hour": {"type": "ephemeral", "ttl": 3600}
+        "5m": {"type": "ephemeral", "ttl": "5m"},
+        "1h": {"type": "ephemeral", "ttl": "1h"},
+        # Legacy aliases
+        "5min": {"type": "ephemeral", "ttl": "5m"},
+        "1hour": {"type": "ephemeral", "ttl": "1h"},
     }
     
     cache_control = cache_type_map.get(cache_type, {"type": "ephemeral"})
@@ -2290,7 +2301,7 @@ def process_message_with_cache_and_images(content_string: str, cache_type: str =
     
     Args:
         content_string (str): The message content that may contain cache and/or image markers
-        cache_type (str): The type of cache control to apply: "ephemeral", "5min", "1hour"
+        cache_type (str): The type of cache control to apply: "ephemeral", "5m", "1h"
         skip_gifs (bool): Whether to skip GIF images
         
     Returns:
@@ -2302,16 +2313,19 @@ def process_message_with_cache_and_images(content_string: str, cache_type: str =
         - Cache markers apply to all content (text and images) before them
         - Cache types:
           - "ephemeral": Default caching behavior
-          - "5min": Cache for 5 minutes (300 seconds)
-          - "1hour": Cache for 1 hour (3600 seconds)
+          - "5m": Cache for 5 minutes
+          - "1h": Cache for 1 hour
     """
     import re
     
-    # Map user-friendly cache types to API values
+    # Map user-friendly cache types to API values. Support legacy aliases for backwards compatibility.
     cache_type_map = {
         "ephemeral": {"type": "ephemeral"},
-        "5min": {"type": "ephemeral", "ttl": 300},
-        "1hour": {"type": "ephemeral", "ttl": 3600}
+        "5m": {"type": "ephemeral", "ttl": "5m"},
+        "1h": {"type": "ephemeral", "ttl": "1h"},
+        # Legacy aliases
+        "5min": {"type": "ephemeral", "ttl": "5m"},
+        "1hour": {"type": "ephemeral", "ttl": "1h"},
     }
     
     cache_control = cache_type_map.get(cache_type, {"type": "ephemeral"})
@@ -2325,37 +2339,46 @@ def process_message_with_cache_and_images(content_string: str, cache_type: str =
         # Determine if this section should have cache control
         should_cache = cache_idx < len(cache_sections) - 1
         
-        # Now process images within this cache section
+        # Process images within this cache section
         image_sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", cache_section)
+        
+        # First, collect all parts for this cache section
+        section_parts = []
         
         if len(image_sections) == 1:
             # No images in this section
             if cache_section.strip():
-                all_parts.append(MessagePart(
+                section_parts.append(MessagePart(
                     type="text",
                     content=cache_section.strip(),
-                    cache_control=cache_control if should_cache else None
+                    cache_control=None  # Will be set later if needed
                 ))
         else:
             # Process sections with images
             for i, section in enumerate(image_sections):
                 if i % 2 == 0:  # Text section
                     if section.strip():
-                        all_parts.append(MessagePart(
+                        section_parts.append(MessagePart(
                             type="text",
                             content=section.strip(),
-                            cache_control=cache_control if should_cache else None
+                            cache_control=None  # Will be set later if needed
                         ))
                 else:  # Image URL section
-                    # For images, we include them in the message parts but they won't be cached by Anthropic
-                    # Only text content can have cache_control
                     mime_type = guess_mime_type(section)
                     if not (skip_gifs and mime_type == "image/gif"):
-                        all_parts.append(MessagePart(
+                        section_parts.append(MessagePart(
                             type="image",
                             content=section,
                             mime_type=mime_type
                         ))
+        
+        # If this section should be cached, apply cache_control ONLY to the LAST part
+        if should_cache and section_parts:
+            # Apply cache control to the last part in this section
+            section_parts[-1].cache_control = cache_control
+        
+        # Add all parts from this section to the overall list
+        all_parts.extend(section_parts)
     
     return all_parts
 
