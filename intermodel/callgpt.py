@@ -530,7 +530,7 @@ async def complete(
             "n": num_completions,
             **rest,
         }
-        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and not model.startswith("gpt-5"):
+        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and model != "Hermes-4-405B" and not model.startswith("gpt-5"):
             api_arguments["max_tokens"] = max_tokens
         elif model.startswith("gpt-5"):
             api_arguments["max_completion_tokens"] = max_tokens
@@ -565,7 +565,7 @@ async def complete(
                 del api_arguments[key]
         # Limit stop sequences for OpenAI
         if "stop" in api_arguments and isinstance(api_arguments["stop"], list):
-            if not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and not model.startswith("gpt-5"):
+            if not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and model != "Hermes-4-405B" and not model.startswith("gpt-5"):
                 if len(api_arguments["stop"]) > 4:
                     print(f"[DEBUG] OpenAI only supports up to 4 stop sequences. Truncating from {len(api_arguments['stop'])}.", file=sys.stderr)
                     api_arguments["stop"] = api_arguments["stop"][:4]
@@ -669,7 +669,7 @@ async def complete(
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
-            if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith("grok") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("gpt-5"):
+            if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith("grok") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("gpt-5") or model == "Hermes-4-405B":
                 if "logit_bias" in api_arguments:
                     del api_arguments["logit_bias"]
                 # Remove presence_penalty, frequency_penalty, and stop for grok models as they don't support them
@@ -698,6 +698,7 @@ async def complete(
                     or model.startswith("aion")
                     or model.startswith("deepseek/deepseek-chat")
                     or model.startswith("tngtech/deepseek")
+                    or model == "Hermes-4-405B"
                 ):
                     if api_base.startswith("https://openrouter.ai"):
                         reasoning_content_key = "reasoning"
