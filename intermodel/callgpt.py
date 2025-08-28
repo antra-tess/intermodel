@@ -621,7 +621,7 @@ async def complete(
                 model.startswith("o3") or
                 model.startswith("o4-mini") or
                 model.startswith("moonshotai/") or
-                model.startswith("hermes-4") or
+                model.startswith("hermes-4") or model == "Hermes-4-405B" or
                 is_anthropic_openrouter
             )
         ) and not is_base_model:
@@ -2459,7 +2459,7 @@ def tokenize(model: str, string: str) -> List[int]:
     if vendor == "openai" or vendor == "bedrock" or vendor == "aws-bedrock" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("anthropic.") or model.startswith("claude-3") or model == "claude-opus-4-1-20250805" or model.startswith(
             "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
-            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/") or model.startswith("hermes-4"):
+            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/") or model.startswith("hermes-4") or model == "Hermes-4-405B":
         # tiktoken internally caches loaded tokenizers
         #print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
 
@@ -2497,7 +2497,7 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("meta-llama/llama-3.1-405b"):
             tokenizer = tiktoken.encoding_for_model("gpt2")
-        elif model.startswith("hermes-4"):
+        elif model.startswith("hermes-4") or model == "Hermes-4-405B":
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("gemini-"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
@@ -2663,7 +2663,7 @@ def pick_vendor(model, custom_config=None):
         return "gemini"  # Gemini models go directly
     elif model.startswith("moonshotai/"):
         return "openai"  # Moonshot models use OpenAI-compatible API
-    elif model.startswith("hermes-4"):
+    elif model.startswith("hermes-4") or model == "Hermes-4-405B":
         return "openai"  # Hermes 4 models use OpenAI-compatible API
     elif "/" in model:
         return "huggingface"
@@ -2697,7 +2697,7 @@ def max_token_length_inner(model):
         return 128_000
     elif model.startswith("aion"):
         return 30_000  # 32k context window
-    elif model.startswith("hermes-4"):
+    elif model.startswith("hermes-4") or model == "Hermes-4-405B":
         return 100_000  # 100k context window
     elif model == "code-davinci-002":
         return 8001
