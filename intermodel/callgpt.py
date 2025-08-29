@@ -1856,28 +1856,33 @@ async def complete(
             # Potentially add a default empty user message if API requires it
             # processed_messages_intermediate.append(ProcessedMessage(role="user", parts=[MessagePart(type="text", content="")]))
 
-        # Convert processed messages to Gemini format using Google's simplified approach
-        print(f"[DEBUG] Converting {len(processed_messages_intermediate)} processed messages for Gemini", file=sys.stderr)
+        # Convert processed messages to Gemini format using chunked inline approach
+        print(f"[DEBUG] Converting {len(processed_messages_intermediate)} processed messages for Gemini (chunked)", file=sys.stderr)
         
-        # Collect all content for Gemini (text and images together)
-        all_text_parts = []
-        all_images = []
+        # Build contents list preserving order of text and images (chunked approach)
+        gemini_contents = []
         
         for processed_msg in processed_messages_intermediate:
             try:
-                # Process each part of the message
-                for part in processed_msg.parts:
+                # Determine role prefix
+                role_prefix = ""
+                if processed_msg.role == "assistant" or processed_msg.role == "model":
+                    role_prefix = "Assistant: "
+                elif processed_msg.role == "user":
+                    role_prefix = "User: "
+                elif processed_msg.role == "system":
+                    role_prefix = "System: "
+                
+                # Process each part in order, preserving text/image sequence
+                for part_idx, part in enumerate(processed_msg.parts):
                     if part.type == "text":
-                        # Add text content with role prefix if needed
-                        role_prefix = ""
-                        if processed_msg.role == "assistant" or processed_msg.role == "model":
-                            role_prefix = "Assistant: "
-                        elif processed_msg.role == "user":
-                            role_prefix = "User: "
-                        elif processed_msg.role == "system":
-                            role_prefix = "System: "
+                        # Add role prefix only to the first text part of each message
+                        text_content = part.content
+                        if part_idx == 0:
+                            text_content = role_prefix + text_content
                         
-                        all_text_parts.append(role_prefix + part.content)
+                        gemini_contents.append(text_content)
+                        print(f"[DEBUG] Added text chunk: '{text_content[:100]}{'...' if len(text_content) > 100 else ''}'", file=sys.stderr)
                         
                     elif part.type == "image":
                         # Download image and convert to PIL Image
@@ -1900,29 +1905,21 @@ async def complete(
                             from PIL import Image
                             from io import BytesIO
                             image = Image.open(BytesIO(image_bytes))
-                            all_images.append(image)
-                            print(f"[DEBUG] Successfully loaded image: {image.size}", file=sys.stderr)
+                            gemini_contents.append(image)
+                            print(f"[DEBUG] Added image chunk: {image.size} ({image.mode})", file=sys.stderr)
                             
                         except Exception as e:
                             print(f"[DEBUG] Failed to load image {part.content[:100]}{'...' if len(part.content) > 100 else ''}: {e}", file=sys.stderr)
-                            # Continue without this image
+                            # Skip this image but continue processing
                             
             except Exception as e:
                 print(f"[DEBUG] Error processing message: {e}", file=sys.stderr)
                 continue
         
-        # Build contents list for Gemini API (Google's approach)
-        gemini_contents = []
-        
-        # Add combined text if any
-        if all_text_parts:
-            combined_text = "\n\n".join(all_text_parts)
-            gemini_contents.append(combined_text)
-        
-        # Add all images
-        gemini_contents.extend(all_images)
-        
-        print(f"[DEBUG] Built Gemini contents: {len(all_text_parts)} text parts, {len(all_images)} images", file=sys.stderr)
+        # Count final content types for debug
+        text_count = sum(1 for item in gemini_contents if isinstance(item, str))
+        image_count = len(gemini_contents) - text_count
+        print(f"[DEBUG] Built chunked Gemini contents: {text_count} text chunks, {image_count} image chunks (total: {len(gemini_contents)})", file=sys.stderr)
                 
         # Ensure gemini_contents is not empty if the API requires at least one message
         if not gemini_contents:
