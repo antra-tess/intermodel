@@ -392,6 +392,7 @@ async def complete(
     if vendor.startswith("openai"):
         import sys
         import os
+        import re
 
         global session
         if session is None:
