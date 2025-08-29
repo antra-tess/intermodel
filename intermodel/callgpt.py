@@ -2073,6 +2073,10 @@ async def complete(
                     raise Exception("No candidates returned from Gemini")
 
                 for candidate in response.candidates:
+                    if not hasattr(candidate, "content") or candidate.content is None:
+                        print(f"[DEBUG] Candidate has no content, skipping", file=sys.stderr)
+                        continue
+                    
                     for part in candidate.content.parts:
                         if part.text is not None:
                             text_content = part.text
@@ -3229,7 +3233,7 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
                     content_data["_attrs_error"] = str(e)
 
                 # Process the parts
-                if hasattr(candidate.content, "parts"):
+                if hasattr(candidate.content, "parts") and candidate.content.parts:
                     for part in candidate.content.parts:
                         part_data = {"_raw_attrs": {}}
 
