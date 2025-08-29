@@ -37,14 +37,13 @@ load_dotenv()
 _url_validation_cache: Dict[str, Tuple[bool, float]] = {}
 _URL_CACHE_DURATION = 3600  # 1 hour in seconds
 
-
 async def validate_image_url(url: str, session: Optional[aiohttp.ClientSession] = None) -> bool:
     """Validate that an image URL is accessible and returns a valid image.
-
+    
     Args:
         url: The URL to validate
         session: Optional aiohttp session to reuse
-
+        
     Returns:
         bool: True if the URL is valid and accessible, False otherwise
     """
@@ -53,14 +52,12 @@ async def validate_image_url(url: str, session: Optional[aiohttp.ClientSession] 
     if url in _url_validation_cache:
         is_valid, last_checked = _url_validation_cache[url]
         if current_time - last_checked < _URL_CACHE_DURATION:
-            print(
-                f"[DEBUG] URL validation cache hit for {url[:100]}{'...' if len(url) > 100 else ''}: {'valid' if is_valid else 'invalid'}",
-                file=sys.stderr)
+            print(f"[DEBUG] URL validation cache hit for {url[:100]}{'...' if len(url) > 100 else ''}: {'valid' if is_valid else 'invalid'}", file=sys.stderr)
             return is_valid
-
+    
     # Validate the URL
     print(f"[DEBUG] Validating image URL: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
-
+    
     try:
         # Create session if not provided
         if session is None:
@@ -72,7 +69,6 @@ async def validate_image_url(url: str, session: Optional[aiohttp.ClientSession] 
         print(f"[DEBUG] Error validating URL {url[:100]}{'...' if len(url) > 100 else ''}: {str(e)}", file=sys.stderr)
         _url_validation_cache[url] = (False, current_time)
         return False
-
 
 async def _validate_url_with_session(url: str, session: aiohttp.ClientSession, current_time: float) -> bool:
     """Internal function to validate URL with a given session."""
@@ -86,15 +82,14 @@ async def _validate_url_with_session(url: str, session: aiohttp.ClientSession, c
                         print(f"[DEBUG] URL returned status {get_response.status}", file=sys.stderr)
                         _url_validation_cache[url] = (False, current_time)
                         return False
-
+                    
                     # Check content type
                     content_type = get_response.headers.get('Content-Type', '').lower()
-                    if not any(img_type in content_type for img_type in
-                               ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/']):
+                    if not any(img_type in content_type for img_type in ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/']):
                         print(f"[DEBUG] URL content type '{content_type}' is not an image", file=sys.stderr)
                         _url_validation_cache[url] = (False, current_time)
                         return False
-
+                    
                     # Check content length if available
                     content_length = get_response.headers.get('Content-Length')
                     if content_length:
@@ -106,12 +101,11 @@ async def _validate_url_with_session(url: str, session: aiohttp.ClientSession, c
             else:
                 # HEAD request succeeded, check headers
                 content_type = response.headers.get('Content-Type', '').lower()
-                if not any(img_type in content_type for img_type in
-                           ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/']):
+                if not any(img_type in content_type for img_type in ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/']):
                     print(f"[DEBUG] URL content type '{content_type}' is not an image", file=sys.stderr)
                     _url_validation_cache[url] = (False, current_time)
                     return False
-
+                
                 content_length = response.headers.get('Content-Length')
                 if content_length:
                     size_mb = int(content_length) / (1024 * 1024)
@@ -119,11 +113,11 @@ async def _validate_url_with_session(url: str, session: aiohttp.ClientSession, c
                         print(f"[DEBUG] Image size {size_mb:.2f}MB exceeds 5MB limit", file=sys.stderr)
                         _url_validation_cache[url] = (False, current_time)
                         return False
-
+        
         print(f"[DEBUG] URL validation successful", file=sys.stderr)
         _url_validation_cache[url] = (True, current_time)
         return True
-
+        
     except asyncio.TimeoutError:
         print(f"[DEBUG] URL validation timed out", file=sys.stderr)
         _url_validation_cache[url] = (False, current_time)
@@ -133,13 +127,12 @@ async def _validate_url_with_session(url: str, session: aiohttp.ClientSession, c
         _url_validation_cache[url] = (False, current_time)
         return False
 
-
 def guess_mime_type(url: str) -> Optional[str]:
     """Get the MIME type from a URL or file path.
-
+    
     Args:
         url: URL or file path to guess the MIME type for
-
+        
     Returns:
         str or None: The MIME type if it can be determined, or None if not
     """
@@ -154,12 +147,10 @@ def guess_mime_type(url: str) -> Optional[str]:
         return 'image/webp'
     return mime_type
 
-
 MODEL_ALIASES = {}
 untokenizable = set()
 
 session: Optional[aiohttp.ClientSession] = None
-
 
 @dataclasses.dataclass
 class MessagePart:
@@ -168,12 +159,10 @@ class MessagePart:
     mime_type: Optional[str] = None  # for images
     cache_control: Optional[dict] = None  # for Anthropic prompt caching
 
-
 @dataclasses.dataclass
 class ProcessedMessage:
     role: str
     parts: List[MessagePart]
-
 
 def convert_to_openai_format(processed_msg: ProcessedMessage) -> dict:
     content = []
@@ -186,7 +175,6 @@ def convert_to_openai_format(processed_msg: ProcessedMessage) -> dict:
                 "image_url": {"url": part.content}
             })
     return {"role": processed_msg.role, "content": content}
-
 
 def convert_to_gemini_format(processed_msg: ProcessedMessage) -> "types.Content":
     from google.genai import types
@@ -206,28 +194,26 @@ def convert_to_gemini_format(processed_msg: ProcessedMessage) -> "types.Content"
     gemini_role = processed_msg.role
     if processed_msg.role == 'assistant' or processed_msg.role == 'system':
         gemini_role = 'model'
-    elif processed_msg.role != 'user':  # Treat any other unknown roles as user
+    elif processed_msg.role != 'user': # Treat any other unknown roles as user
         gemini_role = 'user'
-
+    
     return types.Content(parts=parts, role=gemini_role)
 
-
-async def convert_to_bedrock_format(processed_msg: ProcessedMessage,
-                                    session: Optional[aiohttp.ClientSession] = None) -> dict:
+async def convert_to_bedrock_format(processed_msg: ProcessedMessage, session: Optional[aiohttp.ClientSession] = None) -> dict:
     """Convert the intermediate message format to Bedrock's API format.
-
+    
     Similar to Anthropic format but requires all images to be base64-encoded.
     Bedrock doesn't support image URLs - only base64 data.
-
+    
     Args:
         processed_msg: A ProcessedMessage object containing text and/or images
         session: Optional aiohttp session for downloading images
-
+        
     Returns:
         dict: Message formatted for Bedrock's API
     """
     content = []
-
+    
     for part in processed_msg.parts:
         if part.type == "text":
             content.append({
@@ -242,21 +228,18 @@ async def convert_to_bedrock_format(processed_msg: ProcessedMessage,
                     if session is None:
                         import aiohttp
                         async with aiohttp.ClientSession() as new_session:
-                            base64_data, mime_type = await download_and_encode_image_for_bedrock(part.content,
-                                                                                                 new_session)
+                            base64_data, mime_type = await download_and_encode_image_for_bedrock(part.content, new_session)
                     else:
                         base64_data, mime_type = await download_and_encode_image_for_bedrock(part.content, session)
-
+                    
                     if base64_data is None:
-                        print(
-                            f"[WARNING] Skipping invalid/inaccessible image URL for Bedrock: {part.content[:100]}{'...' if len(part.content) > 100 else ''}",
-                            file=sys.stderr)
+                        print(f"[WARNING] Skipping invalid/inaccessible image URL for Bedrock: {part.content[:100]}{'...' if len(part.content) > 100 else ''}", file=sys.stderr)
                         content.append({
                             "type": "text",
                             "text": f"[Image URL was not accessible and has been skipped]"
                         })
                         continue
-
+                    
                     content.append({
                         "type": "image",
                         "source": {
@@ -281,24 +264,23 @@ async def convert_to_bedrock_format(processed_msg: ProcessedMessage,
                         "data": part.content
                     }
                 })
-
+    
     return {
         "role": "user" if processed_msg.role in ["user", "system"] else "assistant",
         "content": content
     }
 
 
-async def convert_to_anthropic_format(processed_msg: ProcessedMessage,
-                                      session: Optional[aiohttp.ClientSession] = None) -> dict:
+async def convert_to_anthropic_format(processed_msg: ProcessedMessage, session: Optional[aiohttp.ClientSession] = None) -> dict:
     """Convert the intermediate message format to Anthropic's API format.
-
+    
     Args:
         processed_msg: A ProcessedMessage object containing text and/or images
         session: Optional aiohttp session for URL validation
-
+        
     Returns:
         dict: Message formatted for Anthropic's API
-
+    
     Notes:
         - Anthropic supports both URL and base64-encoded images
         - Images must be JPEG, PNG, GIF, or WebP format
@@ -309,7 +291,7 @@ async def convert_to_anthropic_format(processed_msg: ProcessedMessage,
         - Supports cache_control for prompt caching (beta feature)
     """
     content = []
-
+    
     for part in processed_msg.parts:
         if part.type == "text":
             text_block = {
@@ -326,16 +308,14 @@ async def convert_to_anthropic_format(processed_msg: ProcessedMessage,
                 # Validate the URL is accessible
                 is_valid = await validate_image_url(part.content, session)
                 if not is_valid:
-                    print(
-                        f"[WARNING] Skipping invalid/inaccessible image URL: {part.content[:100]}{'...' if len(part.content) > 100 else ''}",
-                        file=sys.stderr)
+                    print(f"[WARNING] Skipping invalid/inaccessible image URL: {part.content[:100]}{'...' if len(part.content) > 100 else ''}", file=sys.stderr)
                     # Add a text message explaining the skipped image
                     content.append({
                         "type": "text",
                         "text": f"[Image URL was not accessible and has been skipped]"
                     })
                     continue
-
+                
                 content.append({
                     "type": "image",
                     "source": {
@@ -353,7 +333,7 @@ async def convert_to_anthropic_format(processed_msg: ProcessedMessage,
                         "data": part.content
                     }
                 })
-
+    
     return {
         "role": "user" if processed_msg.role in ["user", "system"] else "assistant",
         "content": content
@@ -363,35 +343,35 @@ async def convert_to_anthropic_format(processed_msg: ProcessedMessage,
 @tenacity.retry(
     retry=tenacity.retry_if_exception(
         lambda e: isinstance(e, aiohttp.ClientResponseError)
-                  and e.status in (429,)
-                  or isinstance(e, ValueError)
+        and e.status in (429,)
+        or isinstance(e, ValueError)
     ),
     wait=tenacity.wait_random_exponential(min=1, max=60),
     stop=tenacity.stop_after_attempt(6),
 )
 async def complete(
-        model,
-        prompt=None,
-        temperature=None,
-        top_p=None,
-        max_tokens=None,
-        stop: Optional[List[str]] = None,
-        frequency_penalty: Union[float, int] = 0,
-        presence_penalty: Union[float, int] = 0,
-        num_completions: int = None,
-        top_k=None,
-        repetition_penalty: Union[float, int] = 1,
-        tfs=1,
-        user_id=None,
-        logit_bias=None,
-        vendor=None,
-        vendor_config=None,
-        voice: Optional[str] = None,
-        force_api_mode=None,
-        log_dir="intermodel_logs",  # Add log_dir parameter with a default
-        cache_breakpoints: bool = False,  # Enable cache breakpoint processing for Anthropic
-        cache_type: str = "ephemeral",  # Type of cache control: "ephemeral", "5m", "1h"
-        **kwargs,
+    model,
+    prompt=None,
+    temperature=None,
+    top_p=None,
+    max_tokens=None,
+    stop: Optional[List[str]] = None,
+    frequency_penalty: Union[float, int] = 0,
+    presence_penalty: Union[float, int] = 0,
+    num_completions: int = None,
+    top_k=None,
+    repetition_penalty: Union[float, int] = 1,
+    tfs=1,
+    user_id=None,
+    logit_bias=None,
+    vendor=None,
+    vendor_config=None,
+    voice: Optional[str] = None,
+    force_api_mode=None,
+    log_dir="intermodel_logs",  # Add log_dir parameter with a default
+    cache_breakpoints: bool = False,  # Enable cache breakpoint processing for Anthropic
+    cache_type: str = "ephemeral",  # Type of cache control: "ephemeral", "5m", "1h"
+    **kwargs,
 ):
     modalities = kwargs.pop("modalities", None)
     audio_settings = kwargs.pop("audio_settings", None)
@@ -429,8 +409,8 @@ async def complete(
         # Initialize common OpenAI variables first
         if "openai_api_key" not in kwargs:
             kwargs["openai_api_key"] = os.getenv("OPENAI_API_KEY")
-
-        rest = dict(kwargs)  # Create a copy to pop from for api_base etc.
+        
+        rest = dict(kwargs) # Create a copy to pop from for api_base etc.
         headers = {
             "Content-Type": "application/json",
         }
@@ -459,12 +439,10 @@ async def complete(
                 actual_prompt_for_image_gen = "\\n".join(prompt_parts).strip()
             elif prompt:  # prompt string kwarg from complete()
                 actual_prompt_for_image_gen = prompt
-
+            
             # Truncate prompt for gpt-image-1 if it exceeds 32000 characters
             if model == "gpt-image-1" and len(actual_prompt_for_image_gen) > 32000:
-                print(
-                    f"[DEBUG] Truncating gpt-image-1 prompt from {len(actual_prompt_for_image_gen)} to 32000 characters.",
-                    file=sys.stderr)
+                print(f"[DEBUG] Truncating gpt-image-1 prompt from {len(actual_prompt_for_image_gen)} to 32000 characters.", file=sys.stderr)
                 actual_prompt_for_image_gen = actual_prompt_for_image_gen[-32000:]
 
             if not actual_prompt_for_image_gen:
@@ -484,12 +462,12 @@ async def complete(
             if model == "dall-e-3":
                 if "quality" in kwargs: api_arguments_img["quality"] = kwargs["quality"]
                 if "style" in kwargs: api_arguments_img["style"] = kwargs["style"]
-
+            
             # Add gpt-image-1 specific parameters - default to no transparency
             if model == "gpt-image-1":
                 # Default to no transparency unless explicitly overridden
                 api_arguments_img["background"] = kwargs.get("background", "opaque")
-
+            
             # Add response_format only for specific DALL-E models that support it
             if model == "dall-e-2" or model == "dall-e-3":
                 api_arguments_img["response_format"] = "b64_json"
@@ -510,8 +488,7 @@ async def complete(
                     error_info = {
                         "request": {
                             "url": api_base + api_suffix,
-                            "headers": {k: v if k.lower() != "authorization" else "Bearer [REDACTED]" for k, v in
-                                        headers.items()},
+                            "headers": {k: v if k.lower() != "authorization" else "Bearer [REDACTED]" for k, v in headers.items()},
                             "body": api_arguments_img
                         },
                         "response": api_response,
@@ -519,22 +496,21 @@ async def complete(
                     }
                     _log_error(error_info)
                 response.raise_for_status()
-
+            
             return {
                 "prompt": {"text": actual_prompt_for_image_gen},
                 "completions": [
                     {
                         "text": img_item.get("revised_prompt", ""),  # DALL-E 3 can return revised_prompt
                         "image_data": img_item.get("b64_json"),
-                        "finish_reason": {"reason": "stop"},  # Assuming success
+                        "finish_reason": {"reason": "stop"}, # Assuming success
                     }
                     for img_item in api_response.get("data", [])
                 ],
-                "model": model,  # Actual model used
-                "id": str(uuid.uuid4()),
-                # Image API doesn't provide a top-level UUID, use created timestamp or new UUID
-                "created": api_response.get("created"),  # Timestamp from response
-                "usage": {  # Image API doesn't provide token usage
+                "model": model, # Actual model used
+                "id": str(uuid.uuid4()), # Image API doesn't provide a top-level UUID, use created timestamp or new UUID
+                "created": api_response.get("created"), # Timestamp from response
+                "usage": { # Image API doesn't provide token usage
                     "vendor": vendor,
                 },
             }
@@ -554,8 +530,7 @@ async def complete(
             "n": num_completions,
             **rest,
         }
-        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith(
-                "o4-mini") and model != "hermes-4-cot" and model != "Hermes-4-405B" and not model.startswith("gpt-5"):
+        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and model != "Hermes-4-405B" and not model.startswith("gpt-5"):
             api_arguments["max_tokens"] = max_tokens
         elif model.startswith("gpt-5"):
             api_arguments["max_completion_tokens"] = max_tokens
@@ -581,7 +556,7 @@ async def complete(
 
                 if "format" not in final_audio_settings:
                     final_audio_settings["format"] = "mp3"
-
+                
                 if final_audio_settings:
                     api_arguments["audio"] = final_audio_settings
         # remove None values, OpenAI API doesn't like them
@@ -590,17 +565,13 @@ async def complete(
                 del api_arguments[key]
         # Limit stop sequences for OpenAI
         if "stop" in api_arguments and isinstance(api_arguments["stop"], list):
-            if not model.startswith("o3") and not model.startswith(
-                    "o4-mini") and model != "hermes-4-cot" and model != "Hermes-4-405B" and not model.startswith(
-                    "gpt-5"):
+            if not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and model != "Hermes-4-405B" and not model.startswith("gpt-5"):
                 if len(api_arguments["stop"]) > 4:
-                    print(
-                        f"[DEBUG] OpenAI only supports up to 4 stop sequences. Truncating from {len(api_arguments['stop'])}.",
-                        file=sys.stderr)
+                    print(f"[DEBUG] OpenAI only supports up to 4 stop sequences. Truncating from {len(api_arguments['stop'])}.", file=sys.stderr)
                     api_arguments["stop"] = api_arguments["stop"][:4]
                 # Ensure stop sequences are not empty strings, which OpenAI rejects
                 api_arguments["stop"] = [s for s in api_arguments["stop"] if s]
-                if not api_arguments["stop"]:  # If list becomes empty after removing empty strings
+                if not api_arguments["stop"]: # If list becomes empty after removing empty strings
                     del api_arguments["stop"]
             else:
                 del api_arguments["stop"]
@@ -609,56 +580,56 @@ async def complete(
         # Helper functions for specific API modes
         def is_force_api_mode_chat(mode):
             return mode.lower() == "chat"
-
+            
         def is_force_api_mode_completions(mode):
             return mode.lower() == "completions"
-
+                
         print(f"[DEBUG] force_api_mode: {force_api_mode}")
         print(f"[DEBUG] is_force_api_mode_chat(force_api_mode): {is_force_api_mode_chat(force_api_mode)}")
         print(f"[DEBUG] is_force_api_mode_completions(force_api_mode): {is_force_api_mode_completions(force_api_mode)}")
-
+        
         # Explicitly check for base models that should use completions endpoint
         is_base_model = model.endswith("-base") or model == "gpt-4-base"
         print(f"[DEBUG] is_base_model: {is_base_model}")
-
+        
         # Check if this is an anthropic model going through OpenRouter (special handling needed)
         is_anthropic_openrouter = model.startswith("anthropic/claude-")
         print(f"[DEBUG] is_anthropic_openrouter: {is_anthropic_openrouter}")
-
+        
         if (
-                is_force_api_mode_chat(force_api_mode) or
-                (not is_force_api_mode_completions(force_api_mode)) and (
-                        (message_history_format is not None and message_history_format.is_chat()) or
-                        model.startswith("gpt-3.5") or
-                        model.startswith("gpt-4") or
-                        model.startswith("gpt-5") or
-                        model.startswith("o1") or
-                        model.startswith("openpipe:") or
-                        model.startswith("gpt4") or
-                        model.startswith("chatgpt-4o") or
-                        model.startswith("gpt-4.1") or
-                        model.startswith("grok") or
-                        model.startswith("deepseek-reasoner") or
-                        model.startswith("deepseek/deepseek-chat") or
-                        model.startswith("deepseek/deepseek-r1") or
-                        model.startswith("deepseek-ai/DeepSeek-R1-Zero") or
-                        model.startswith("tngtech/deepseek") or
-                        model.startswith("aion") or
-                        model.startswith("google/gemma-3-27b-it") or
-                        model.startswith("DeepHermes-3-Mistral-24B-Preview") or
-                        api_base.startswith("https://integrate.api.nvidia.com") or
-                        model.startswith("o3") or
-                        model.startswith("o4-mini") or
-                        model.startswith("moonshotai/") or
-                        model.startswith("hermes-4") or model == "Hermes-4-405B" or
-                        is_anthropic_openrouter
-                )
+            is_force_api_mode_chat(force_api_mode) or
+            (not is_force_api_mode_completions(force_api_mode)) and (
+                (message_history_format is not None and message_history_format.is_chat()) or
+                model.startswith("gpt-3.5") or
+                model.startswith("gpt-4") or
+                model.startswith("gpt-5") or
+                model.startswith("o1") or
+                model.startswith("openpipe:") or
+                model.startswith("gpt4") or
+                model.startswith("chatgpt-4o") or
+                model.startswith("gpt-4.1") or
+                model.startswith("grok") or
+                model.startswith("deepseek-reasoner") or
+                model.startswith("deepseek/deepseek-chat") or
+                model.startswith("deepseek/deepseek-r1") or
+                model.startswith("deepseek-ai/DeepSeek-R1-Zero") or
+                model.startswith("tngtech/deepseek") or
+                model.startswith("aion") or
+                model.startswith("google/gemma-3-27b-it") or
+                model.startswith("DeepHermes-3-Mistral-24B-Preview") or
+                api_base.startswith("https://integrate.api.nvidia.com") or
+                model.startswith("o3") or
+                model.startswith("o4-mini") or
+                model.startswith("moonshotai/") or
+                model.startswith("hermes-4") or model == "Hermes-4-405B" or
+                is_anthropic_openrouter
+            )
         ) and not is_base_model:
-
+        
             if messages is None:
                 if (
-                        message_history_format is not None
-                        and message_history_format.is_chat()
+                    message_history_format is not None
+                    and message_history_format.is_chat() 
                 ):
                     api_arguments["messages"] = message_history_format.format_messages(
                         api_arguments["prompt"], "user"
@@ -671,14 +642,14 @@ async def complete(
                         content_parts = []
                         sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt_text)
                         for i, section in enumerate(sections):
-                            if i % 2 == 0:  # text
+                            if i % 2 == 0: # text
                                 if section.strip():
                                     content_parts.append({"type": "text", "text": section.strip()})
-                            else:  # image url
+                            else: # image url
                                 url = section.strip()
                                 if url:
                                     content_parts.append({"type": "image_url", "image_url": {"url": url}})
-
+                        
                         api_arguments["messages"] = [{"role": "user", "content": content_parts}]
                         print(f"[DEBUG] chat history sent as a single multimodal user message")
                     else:
@@ -698,10 +669,7 @@ async def complete(
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
-            if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith(
-                    "https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith(
-                    "grok") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith(
-                    "gpt-5") or model == "Hermes-4-405B":
+            if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith("grok") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("gpt-5") or model == "Hermes-4-405B":
                 if "logit_bias" in api_arguments:
                     del api_arguments["logit_bias"]
                 # Remove presence_penalty, frequency_penalty, and stop for grok models as they don't support them
@@ -719,18 +687,18 @@ async def complete(
                     if "frequency_penalty" in api_arguments:
                         del api_arguments["frequency_penalty"]
                 if (
-                        model.startswith("o1")
-                        or model.startswith("o3")
-                        or model.startswith("o4-mini")
-                        or model.startswith("gpt-5")
-                        or model.startswith("chatgpt-4o")
-                        or model.startswith("deepseek-reasoner")
-                        or model.startswith("deepseek/deepseek-r1")
-                        or model.startswith("deepseek-ai/DeepSeek-R1-Zero")
-                        or model.startswith("aion")
-                        or model.startswith("deepseek/deepseek-chat")
-                        or model.startswith("tngtech/deepseek")
-                        or model == "Hermes-4-405B"
+                    model.startswith("o1")
+                    or model.startswith("o3")
+                    or model.startswith("o4-mini")
+                    or model.startswith("gpt-5")
+                    or model.startswith("chatgpt-4o")
+                    or model.startswith("deepseek-reasoner")
+                    or model.startswith("deepseek/deepseek-r1")
+                    or model.startswith("deepseek-ai/DeepSeek-R1-Zero")
+                    or model.startswith("aion")
+                    or model.startswith("deepseek/deepseek-chat")
+                    or model.startswith("tngtech/deepseek")
+                    or model == "Hermes-4-405B"
                 ):
                     if api_base.startswith("https://openrouter.ai"):
                         reasoning_content_key = "reasoning"
@@ -739,14 +707,14 @@ async def complete(
                         reasoning_content_key = "reasoning_content"
             # Remove empty logit_bias for NVIDIA endpoints
             api_suffix = "/chat/completions"
-
+            
             # Special handling for Anthropic models through OpenRouter
             if is_anthropic_openrouter and "messages" in api_arguments:
                 anthropic_prompt = convert_messages_to_anthropic_prompt(api_arguments["messages"])
                 api_arguments["prompt"] = anthropic_prompt
                 del api_arguments["messages"]
                 print(f"[DEBUG] Converted messages to Anthropic prompt format for OpenRouter")
-
+                
                 # Handle thinking parameter for OpenRouter Anthropic models
                 if "thinking" in kwargs:
                     thinking_config = kwargs.pop("thinking")
@@ -760,21 +728,21 @@ async def complete(
                             "budget_tokens": max(2048, max_tokens // 2)
                         }
                     print(f"[DEBUG] Added thinking parameter for OpenRouter Anthropic model")
-        else:
+        else:                
             api_suffix = "/completions"
-
+            
             # Handle message format conversion for chat → completions mode
             if message_history_format is not None and message_history_format.is_chat():
                 formatted_messages = []
-
+                
                 if messages is None:
                     messages = message_history_format.format_messages(prompt, "user")
-
+                
                 # Convert messages to a single prompt string
                 for msg in messages:
                     role = msg.get("role", "user")
                     content = msg.get("content", "")
-
+                    
                     if isinstance(content, list):
                         # For multi-modal content, just extract text parts
                         text_parts = []
@@ -782,7 +750,7 @@ async def complete(
                             if item.get("type") == "text":
                                 text_parts.append(item.get("text", ""))
                         content = " ".join(text_parts)
-
+                    
                     # Format based on role
                     if role == "system":
                         formatted_messages.append(f"System: {content}")
@@ -795,14 +763,14 @@ async def complete(
                 # Join all messages with newlines
                 api_arguments["prompt"] = "\n\n".join(formatted_messages)
                 print(f"[DEBUG] Converted chat messages to completions prompt: {len(api_arguments['prompt'])} chars")
-
+                
         print(f"[DEBUG] Using endpoint: {api_base + api_suffix}")
         if api_suffix == "/chat/completions":
             if 'messages' in api_arguments:
                 print(f"[DEBUG] message count: {len(api_arguments['messages'])}")
             else:
                 print(f"[DEBUG] using prompt instead of messages (Anthropic OpenRouter mode)")
-
+            
             # Only prepare messages for chat completions endpoint (except Anthropic OpenRouter models)
             if not is_anthropic_openrouter:
                 api_arguments['messages'] = await prepare_openai_messages(
@@ -828,7 +796,7 @@ async def complete(
         }, log_dir)
 
         async with session.post(
-                api_base + api_suffix, headers=headers, json=api_arguments
+            api_base + api_suffix, headers=headers, json=api_arguments
         ) as response:
             api_response = await response.json()
 
@@ -840,8 +808,7 @@ async def complete(
                 error_info = {
                     "request": {
                         "url": api_base + api_suffix,
-                        "headers": {k: v if k.lower() != "authorization" else "Bearer [REDACTED]" for k, v in
-                                    headers.items()},
+                        "headers": {k: v if k.lower() != "authorization" else "Bearer [REDACTED]" for k, v in headers.items()},
                         "body": api_arguments
                     },
                     "response": api_response
@@ -927,7 +894,7 @@ async def complete(
                 f"https://api.ai21.com/studio/v1/{model}/complete",
                 headers={
                     "Authorization": "Bearer "
-                                     + kwargs.get("ai21_api_key", os.environ.get("AI21_API_KEY"))
+                    + kwargs.get("ai21_api_key", os.environ.get("AI21_API_KEY"))
                 },
                 json={
                     "prompt": prompt,
@@ -978,7 +945,7 @@ async def complete(
                 f"https://api-inference.huggingface.co/models/{model}",
                 headers={
                     "Authorization": "Bearer "
-                                     + kwargs.get(
+                    + kwargs.get(
                         "huggingface_api_key", os.environ.get("HUGGINGFACE_API_KEY")
                     )
                 },
@@ -1003,7 +970,7 @@ async def complete(
                 f"https://shared-api.{model}",
                 headers={
                     "Authorization": "Bearer "
-                                     + kwargs.get("forefront_api_key", os.getenv("FOREFRONT_API_KEY"))
+                    + kwargs.get("forefront_api_key", os.getenv("FOREFRONT_API_KEY"))
                 },
                 json={
                     "text": prompt,
@@ -1063,8 +1030,8 @@ async def complete(
 
         if messages is None:
             if (
-                    message_history_format is not None
-                    and message_history_format.is_chat()
+                message_history_format is not None
+                and message_history_format.is_chat()
             ):
                 if cache_breakpoints:
                     # Process messages with cache marker support
@@ -1073,7 +1040,7 @@ async def complete(
                         if isinstance(message["content"], str):
                             # Process both cache markers and images
                             parts = process_message_with_cache_and_images(
-                                message["content"],
+                                message["content"], 
                                 cache_type=cache_type
                             )
                             processed_messages.append(ProcessedMessage(
@@ -1086,7 +1053,7 @@ async def complete(
                                 role=message["role"],
                                 parts=[MessagePart(type="text", content=str(message["content"]))]
                             ))
-
+                    
                     # Convert to Anthropic format
                     import asyncio
                     messages = await asyncio.gather(*[
@@ -1116,11 +1083,11 @@ async def complete(
 
                 # Process into intermediate format first
                 processed_messages = []
-
+                
                 if cache_breakpoints:
                     # Process with cache marker support for prefill mode
                     parts = process_message_with_cache_and_images(prompt, cache_type=cache_type)
-
+                    
                     # In prefill mode, we need to split content appropriately
                     # Content up to and including the last image goes to user message
                     # Content after the last image goes to assistant message
@@ -1128,7 +1095,7 @@ async def complete(
                     for idx, part in enumerate(parts):
                         if part.type != "text":
                             last_non_text_idx = idx
-
+                    
                     if last_non_text_idx == -1:
                         # No images, all text goes to assistant message
                         processed_messages.append(ProcessedMessage(
@@ -1139,7 +1106,7 @@ async def complete(
                         # Split at the last image
                         user_parts = parts[:last_non_text_idx + 1]
                         assistant_parts = parts[last_non_text_idx + 1:]
-
+                        
                         if user_parts:
                             processed_messages.append(ProcessedMessage(
                                 role="user",
@@ -1150,25 +1117,25 @@ async def complete(
                                 role="assistant",
                                 parts=assistant_parts
                             ))
-
+                    
                     # Skip the original image/text processing since we've already handled it
                     skip_original_processing = True
                 else:
                     skip_original_processing = False
                     # Original processing without cache markers
                     sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
-
+                    
                     # Extract text parts and image URLs
                     text_parts = []
                     image_urls = []
-
+                
                 if not skip_original_processing:
                     for i, section in enumerate(sections):
                         if i % 2 == 0 and section.strip():
                             text_parts.append(section.strip())
                         elif i % 2 == 1:  # Image URL
                             image_urls.append(section.strip())
-
+                    
                     # Respect max_images parameter
                     if max_images == 0:
                         # If max_images is 0, don't process any images
@@ -1184,24 +1151,24 @@ async def complete(
                     # For non-chat mode with images, we need to:
                     # 1. Keep all content in order (text/image/text/image) in the USER message until the last image
                     # 2. Combine all remaining text into the ASSISTANT message
-
+                    
                     if len(image_urls) > 0:
                         # Create user message maintaining order of text and images
                         user_msg_parts = []
                         assistant_text_parts = []
                         img_index = 0
                         last_image_index = -1
-
+                        
                         # First find the last image section index
                         for i, section in enumerate(sections):
                             if i % 2 == 1:  # Image section
                                 if img_index < len(image_urls):
                                     last_image_index = i
                                     img_index += 1
-
+                        
                         # Reset image index for actual processing
                         img_index = 0
-
+                        
                         # Process all sections in order
                         for i, section in enumerate(sections):
                             if i % 2 == 0:  # Text section
@@ -1223,14 +1190,14 @@ async def complete(
                                         mime_type=guess_mime_type(image_urls[img_index])
                                     ))
                                     img_index += 1
-
+                        
                         # Add user message with ordered content
                         if user_msg_parts:
                             processed_messages.append(ProcessedMessage(
                                 role="user",
                                 parts=user_msg_parts
                             ))
-
+                        
                         # Add combined text parts as assistant message
                         assistant_text = " ".join(assistant_text_parts)
                         processed_messages.append(ProcessedMessage(
@@ -1255,11 +1222,11 @@ async def complete(
                 messages = messages + processed_messages
 
         if vendor == "anthropic-steering-preview":
-            # kwargs["extra_headers"] = {"anthropic-beta": "steering-2024-06-04"}
+            #kwargs["extra_headers"] = {"anthropic-beta": "steering-2024-06-04"}
             if "steering" in kwargs:
                 kwargs["extra_body"] = {"steering": kwargs["steering"]}
                 del kwargs["steering"]
-
+        
         # Add cache control beta headers if cache_breakpoints is enabled
         if cache_breakpoints:
             if "extra_headers" not in kwargs:
@@ -1286,18 +1253,17 @@ async def complete(
         # Add any extra kwargs
         for k, v in kwargs.items():
             request_payload[k] = v
-
+        
         # Remove None values for cleaner output
         request_payload = {k: v for k, v in request_payload.items() if v is not None}
-
+        
         # Log the full JSON request, with API key redacted
         print(f"[DEBUG] Full Anthropic API request:", file=sys.stderr)
-
         # Use a custom encoder to handle non-serializable objects
         class CustomEncoder(json.JSONEncoder):
             def default(self, obj):
                 return str(obj)
-
+        
         # Pretty print the JSON for readability
         # Remove old logging
         # with open("anthropic_request.json", "w") as f:
@@ -1356,7 +1322,7 @@ async def complete(
         # Extract thinking content and text if available
         reasoning_content = None
         text_content = ""
-
+        
         for content_block in response.content:
             if content_block.type == "thinking":
                 reasoning_content = content_block.thinking
@@ -1390,27 +1356,26 @@ async def complete(
 
         if num_completions not in [None, 1]:
             raise NotImplementedError("Bedrock only supports num_completions=1")
-
+        
         # Set up Bedrock client with AWS credentials
         aws_region = kwargs.get("aws_region", os.getenv("AWS_REGION", "us-west-2"))
         aws_access_key = kwargs.get("aws_access_key", os.getenv("AWS_ACCESS_KEY_ID"))
         aws_secret_key = kwargs.get("aws_secret_key", os.getenv("AWS_SECRET_ACCESS_KEY"))
-
+        
         if not aws_access_key or not aws_secret_key:
-            raise ValueError(
-                "AWS credentials required for Bedrock. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.")
-
+            raise ValueError("AWS credentials required for Bedrock. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.")
+        
         client = AnthropicBedrock(
             aws_region=aws_region,
             aws_access_key=aws_access_key,
             aws_secret_key=aws_secret_key
         )
-
+        
         # Clean up AWS credentials from kwargs
         for key in ["aws_region", "aws_access_key", "aws_secret_key"]:
             if key in kwargs:
                 del kwargs[key]
-
+        
         # Remove None values, Bedrock API doesn't like them
         for key, value in dict(kwargs).items():
             if value is None:
@@ -1431,8 +1396,8 @@ async def complete(
 
         if messages is None:
             if (
-                    message_history_format is not None
-                    and message_history_format.is_chat()
+                message_history_format is not None
+                and message_history_format.is_chat()
             ):
                 messages = [
                     {
@@ -1443,7 +1408,7 @@ async def complete(
                         prompt, "user"
                     )
                 ]
-
+                
                 # Convert image URLs to base64 for Bedrock compatibility
                 messages = await convert_messages_for_bedrock(messages, session)
             else:
@@ -1460,17 +1425,17 @@ async def complete(
                 # Process into intermediate format first
                 processed_messages = []
                 sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
-
+                
                 # Extract text parts and image URLs
                 text_parts = []
                 image_urls = []
-
+                
                 for i, section in enumerate(sections):
                     if i % 2 == 0 and section.strip():
                         text_parts.append(section.strip())
                     elif i % 2 == 1:  # Image URL
                         image_urls.append(section.strip())
-
+                
                 # Respect max_images parameter
                 if max_images == 0:
                     # If max_images is 0, don't process any images
@@ -1490,17 +1455,17 @@ async def complete(
                     assistant_text_parts = []
                     img_index = 0
                     last_image_index = -1
-
+                    
                     # First find the last image section index
                     for i, section in enumerate(sections):
                         if i % 2 == 1:  # Image section
                             if img_index < len(image_urls):
                                 last_image_index = i
                                 img_index += 1
-
+                    
                     # Reset image index for actual processing
                     img_index = 0
-
+                    
                     # Process all sections in order
                     for i, section in enumerate(sections):
                         if i % 2 == 0:  # Text section
@@ -1522,14 +1487,14 @@ async def complete(
                                     mime_type=guess_mime_type(image_urls[img_index])
                                 ))
                                 img_index += 1
-
+                    
                     # Add user message with ordered content
                     if user_msg_parts:
                         processed_messages.append(ProcessedMessage(
                             role="user",
                             parts=user_msg_parts
                         ))
-
+                    
                     # Add combined text parts as assistant message
                     assistant_text = " ".join(assistant_text_parts)
                     processed_messages.append(ProcessedMessage(
@@ -1552,7 +1517,7 @@ async def complete(
                 ])
 
                 messages = messages + processed_messages
-
+        
         # If messages were provided directly, ensure they're Bedrock-compatible
         elif messages is not None:
             messages = await convert_messages_for_bedrock(messages, session)
@@ -1571,7 +1536,7 @@ async def complete(
             # Add any extra kwargs
             for k, v in kwargs.items():
                 request_payload[k] = v
-
+            
             request_log_file = _log_bedrock_request(request_payload, log_dir)
 
         print(f"[DEBUG] Sending Bedrock request with model: {model}")
@@ -1604,7 +1569,7 @@ async def complete(
         # Extract thinking content and text if available
         reasoning_content = None
         text_content = ""
-
+        
         for content_block in response.content:
             if content_block.type == "thinking":
                 reasoning_content = content_block.thinking
@@ -1680,45 +1645,43 @@ async def complete(
 
         if "google_api_key" not in kwargs:
             kwargs["google_api_key"] = os.getenv("GOOGLE_API_KEY")
-
+        
         client = genai.Client(api_key=kwargs["google_api_key"])
-
+        
         print(f"[DEBUG] Sending request to Gemini model: {model}", file=sys.stderr)
-        print(
-            f"[DEBUG] Content to send: {prompt[:150]}{'...' if len(prompt) > 300 else ''}{prompt[-150:] if len(prompt) > 300 else ''}",
-            file=sys.stderr)
-
+        print(f"[DEBUG] Content to send: {prompt[:150]}{'...' if len(prompt) > 300 else ''}{prompt[-150:] if len(prompt) > 300 else ''}", file=sys.stderr)
+        
         # Convert messages to format expected by Gemini for both text and image models
         messages = message_history_format.format_messages(prompt, "user")
         print(f"[DEBUG] Extracted {len(messages)} messages from chat history format", file=sys.stderr)
-
+        
         # Process the messages to extract text and images
         gemini_contents = []
         processed_messages_intermediate: List[ProcessedMessage] = []
-
+        
         if messages is not None:
             print(f"[DEBUG] Processing {len(messages)} provided messages for Gemini", file=sys.stderr)
             # Convert existing message format to ProcessedMessage
             # First determine if there will be a valid last message that should be a 'model' role
             last_message_index = len(messages) - 1
-
+            
             for msg in messages:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
                 parts = []
-
+                
                 # Determine speaker name for formatting
                 # Check if this is the last message that needs to be a 'model' role
                 is_last_message = (msg == messages[last_message_index])
                 if is_last_message:
                     role = 'assistant'  # Force the last message to have 'model' role
-
+                
                 speaker_name = msg.get('name')
-
+                 
                 # Fallback if name not in message dict
                 if speaker_name is None:
                     if role in ['user', 'system']:
-                        speaker_name = name  # Use the top-level name passed to complete()
+                        speaker_name = name # Use the top-level name passed to complete()
                     elif role == 'assistant' and message_history_format:
                         speaker_name = message_history_format.assistant_name
                     # else: speaker_name remains None if role is unknown and not in msg dict
@@ -1827,35 +1790,35 @@ async def complete(
                                     parts.append(MessagePart(type="image", content=url, mime_type=mime_type))
                 else:
                     print(f"[DEBUG] Unknown content type in message: {type(formatted_content)}", file=sys.stderr)
-
+                
                 if parts:
                     # Create the processed message with the potentially modified role
                     processed_messages_intermediate.append(ProcessedMessage(role=role, parts=parts))
-
+            
         elif prompt is not None:
             # Process the prompt string into ProcessedMessage objects
             print(f"[DEBUG] Processing prompt string for Gemini", file=sys.stderr)
             sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
-
-            # Extract text parts and image URLs
+                        
+                        # Extract text parts and image URLs
             text_parts_all = []
             image_urls_all = []
-
+                        
             for i, section in enumerate(sections):
                 if i % 2 == 0:  # Text section
                     if section.strip():
                         text_parts_all.append(section.strip())
                 else:  # Image URL
                     image_urls_all.append(section.strip())
-
-                    # Respect max_images parameter
+                        
+                        # Respect max_images parameter
             images_to_process_urls = image_urls_all
             if max_images is not None and max_images < len(image_urls_all):
                 images_to_process_urls = image_urls_all[-max_images:]
                 print(f"[DEBUG] Limiting to {len(images_to_process_urls)} images for Gemini", file=sys.stderr)
             else:
                 print(f"[DEBUG] Processing {len(images_to_process_urls)} images for Gemini", file=sys.stderr)
-
+                
             # Construct ProcessedMessage parts
             # Gemini expects alternating user/model roles.
             # If images are present, send all text and images as a single user message.
@@ -2056,27 +2019,29 @@ async def complete(
                         ]
                     )
                 )
-
+                
                 # Log the response
                 if log_dir:
                     _log_gemini_response(response, log_dir, request_log_file)
-
+                
                 # Process the response for image generation
                 text_content = ""
                 image_data = None
 
                 # iterate through all response fields and print the
 
+
                 if not response.candidates or len(response.candidates) == 0:
                     print(f"[DEBUG] No candidates returned from Gemini", file=sys.stderr)
                     print(f"[DEBUG] Response: {response}", file=sys.stderr)
                     raise Exception("No candidates returned from Gemini")
+                
 
                 for candidate in response.candidates:
                     if not hasattr(candidate, "content") or candidate.content is None:
                         print(f"[DEBUG] Candidate has no content, skipping", file=sys.stderr)
                         continue
-                    
+
                     for part in candidate.content.parts:
                         if part.text is not None:
                             text_content = part.text
@@ -2087,21 +2052,21 @@ async def complete(
                             image_data = part.inline_data.data
                             image_size = len(image_data) if image_data else 0
                             print(f"[DEBUG] Received image data: {image_size} bytes", file=sys.stderr)
-
+                            
                             # Save image to file for debugging
                             if image_data:
                                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                                 debug_dir = os.path.join(os.getcwd(), "debug_images")
                                 os.makedirs(debug_dir, exist_ok=True)
                                 image_filename = os.path.join(debug_dir, f"gemini_image_{timestamp}.png")
-
+                                
                                 try:
                                     with open(image_filename, "wb") as f:
                                         f.write(image_data)
                                     print(f"[DEBUG] Saved image to: {image_filename}", file=sys.stderr)
                                 except Exception as e:
                                     print(f"[DEBUG] Failed to save image: {str(e)}", file=sys.stderr)
-
+                    
                 return {
                     "prompt": {"text": prompt},
                     "completions": [
@@ -2132,12 +2097,12 @@ async def complete(
                         "safety_settings": "BLOCK_NONE for all categories"
                     }
                 }
-
+                
                 # Log the request
                 request_log_file = None
                 if log_dir:
                     request_log_file = _log_gemini_request(request_data, log_dir)
-
+                
                 # For regular text models
                 response = client.models.generate_content(
                     model=model,
@@ -2172,18 +2137,17 @@ async def complete(
                     #     ]
                     # )
                 )
-
+                
                 # Log the response
                 if log_dir:
                     _log_gemini_response(response, log_dir, request_log_file)
 
                 if response.text:
-                    print(
-                        f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}",
-                        file=sys.stderr)
+                   print(f"[DEBUG] Received response: {response.text[:100]}{'...' if len(response.text) > 100 else ''}", file=sys.stderr)
                 else:
                     print(f"[DEBUG] Received response with no text: {response}", file=sys.stderr)
                     raise Exception("No text returned from Gemini: " + str(response))
+         
 
                 return {
                     "prompt": {"text": prompt},
@@ -2209,10 +2173,10 @@ async def complete(
 
 def download_and_process_image(url: str) -> bytes:
     """Download image and return raw bytes.
-
+    
     Args:
         url (str): URL of the image to download
-
+        
     Returns:
         bytes: Raw image data
     """
@@ -2224,42 +2188,41 @@ def download_and_process_image(url: str) -> bytes:
     response.raise_for_status()
     image_data = response.content
     mime_type = response.headers.get("content-type") or guess_mime_type(url)
-
+    
     # Gemini doesn't support GIFs
     if mime_type and mime_type.lower() == "image/gif":
         print(f"[DEBUG] Skipping GIF image as it's not supported by Gemini", file=sys.stderr)
         # TODO: Consider converting GIF to a supported format (e.g., PNG) instead of skipping
-        raise ValueError("Gemini does not support GIF images.")
-
+        raise ValueError("Gemini does not support GIF images.") 
+        
     print(f"[DEBUG] Downloaded image: {len(image_data)} bytes, mime type: {mime_type}", file=sys.stderr)
     return image_data
 
 
-async def convert_messages_for_bedrock(messages: List[dict], session: Optional[aiohttp.ClientSession] = None) -> List[
-    dict]:
+async def convert_messages_for_bedrock(messages: List[dict], session: Optional[aiohttp.ClientSession] = None) -> List[dict]:
     """Convert messages with image URLs to use base64 for Bedrock compatibility.
-
+    
     Args:
         messages: List of message dicts that may contain image URLs
         session: Optional aiohttp session for downloading images
-
+        
     Returns:
         List[dict]: Messages with image URLs converted to base64
     """
     if not messages:
         return messages
-
+    
     # Create session if not provided
     if session is None:
         import aiohttp
         async with aiohttp.ClientSession() as new_session:
             return await convert_messages_for_bedrock(messages, new_session)
-
+    
     converted_messages = []
-
+    
     for message in messages:
         content = message.get("content", "")
-
+        
         # If content is a list (multimodal), process each part
         if isinstance(content, list):
             new_content = []
@@ -2298,7 +2261,7 @@ async def convert_messages_for_bedrock(messages: List[dict], session: Optional[a
                 else:
                     # Non-image part, keep as-is
                     new_content.append(part)
-
+            
             converted_messages.append({
                 **message,
                 "content": new_content
@@ -2306,51 +2269,48 @@ async def convert_messages_for_bedrock(messages: List[dict], session: Optional[a
         else:
             # Text-only content, keep as-is
             converted_messages.append(message)
-
+    
     return converted_messages
 
 
-async def download_and_encode_image_for_bedrock(url: str, session: aiohttp.ClientSession) -> Tuple[
-    Optional[str], Optional[str]]:
+async def download_and_encode_image_for_bedrock(url: str, session: aiohttp.ClientSession) -> Tuple[Optional[str], Optional[str]]:
     """Download image and encode it as base64 for Bedrock.
-
+    
     Args:
         url (str): URL of the image to download
         session: aiohttp session for downloading
-
+        
     Returns:
         Tuple[Optional[str], Optional[str]]: (base64_data, mime_type) or (None, None) if failed
     """
     import base64
     import sys
 
-    print(f"[DEBUG] Downloading and encoding image for Bedrock from: {url[:100]}{'...' if len(url) > 100 else ''}",
-          file=sys.stderr)
-
+    print(f"[DEBUG] Downloading and encoding image for Bedrock from: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
+    
     try:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
             response.raise_for_status()
             image_data = await response.read()
             mime_type = response.headers.get("content-type") or guess_mime_type(url)
-
+            
             # Check image size
             size_mb = len(image_data) / (1024 * 1024)
             if size_mb > 5:
                 print(f"[WARNING] Image size {size_mb:.2f}MB exceeds 5MB limit for Bedrock, skipping", file=sys.stderr)
                 return None, None
-
+            
             # Skip GIFs as they're often not well supported
             if mime_type and mime_type.lower() == "image/gif":
                 print(f"[DEBUG] Skipping GIF image for Bedrock", file=sys.stderr)
                 return None, None
-
+                
             # Encode to base64
             base64_data = base64.b64encode(image_data).decode('utf-8')
-            print(f"[DEBUG] Encoded image for Bedrock: {len(image_data)} bytes, mime type: {mime_type}",
-                  file=sys.stderr)
-
+            print(f"[DEBUG] Encoded image for Bedrock: {len(image_data)} bytes, mime type: {mime_type}", file=sys.stderr)
+            
             return base64_data, mime_type
-
+            
     except Exception as e:
         print(f"[ERROR] Failed to download/encode image for Bedrock: {str(e)}", file=sys.stderr)
         return None, None
@@ -2358,11 +2318,11 @@ async def download_and_encode_image_for_bedrock(url: str, session: aiohttp.Clien
 
 def download_and_encode_image(url: str, skip_gifs: bool = False) -> Tuple[Optional[str], Optional[str]]:
     """Download image and encode it as base64.
-
+    
     Args:
         url (str): URL of the image to download
         skip_gifs (bool): Whether to skip GIF images
-
+        
     Returns:
         Tuple[Optional[str], Optional[str]]: (base64_data, mime_type) or (None, None) if skipped
     """
@@ -2371,30 +2331,30 @@ def download_and_encode_image(url: str, skip_gifs: bool = False) -> Tuple[Option
     import base64
 
     print(f"[DEBUG] Downloading and encoding image from: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
-
+    
     try:
         response = requests.get(url, timeout=30)
         response.raise_for_status()
         image_data = response.content
         mime_type = response.headers.get("content-type") or guess_mime_type(url)
-
+        
         # Skip GIFs if requested
         if skip_gifs and mime_type and mime_type.lower() == "image/gif":
             print(f"[DEBUG] Skipping GIF image as requested", file=sys.stderr)
             return None, None
-
+            
         # Check image size
         size_mb = len(image_data) / (1024 * 1024)
         if size_mb > 5:
             print(f"[WARNING] Image size {size_mb:.2f}MB exceeds 5MB limit, skipping", file=sys.stderr)
             return None, None
-
+            
         # Encode to base64
         base64_data = base64.b64encode(image_data).decode('utf-8')
         print(f"[DEBUG] Encoded image: {len(image_data)} bytes, mime type: {mime_type}", file=sys.stderr)
-
+        
         return base64_data, mime_type
-
+        
     except requests.RequestException as e:
         print(f"[ERROR] Failed to download image: {str(e)}", file=sys.stderr)
         raise
@@ -2405,14 +2365,14 @@ def download_and_encode_image(url: str, skip_gifs: bool = False) -> Tuple[Option
 
 def process_cache_markers(content_string: str, cache_type: str = "ephemeral") -> List[MessagePart]:
     """Process a message that may contain cache breakpoint markers.
-
+    
     Args:
         content_string (str): The message content that may contain cache markers
         cache_type (str): The type of cache control to apply: "ephemeral", "5m", "1h"
-
+        
     Returns:
         List[MessagePart]: A list of MessagePart objects with cache_control metadata
-
+    
     Notes:
         - Cache markers are specified using <|cache_breakpoint|>
         - Content before the last cache marker gets cache_control
@@ -2423,7 +2383,7 @@ def process_cache_markers(content_string: str, cache_type: str = "ephemeral") ->
           - "1h": Cache for 1 hour
     """
     import re
-
+    
     # Map user-friendly cache types to API values. Support legacy aliases for backwards compatibility.
     cache_type_map = {
         "ephemeral": {"type": "ephemeral"},
@@ -2433,14 +2393,14 @@ def process_cache_markers(content_string: str, cache_type: str = "ephemeral") ->
         "5min": {"type": "ephemeral", "ttl": "5m"},
         "1hour": {"type": "ephemeral", "ttl": "1h"},
     }
-
+    
     cache_control = cache_type_map.get(cache_type, {"type": "ephemeral"})
-
+    
     sections = re.split(r"<\|cache_breakpoint\|>", content_string)
     if len(sections) == 1:
         # No cache markers, return single part without cache control
         return [MessagePart(type="text", content=content_string)]
-
+    
     parts = []
     for i, section in enumerate(sections[:-1]):  # All sections except the last get cached
         if section.strip():
@@ -2449,29 +2409,28 @@ def process_cache_markers(content_string: str, cache_type: str = "ephemeral") ->
                 content=section,
                 cache_control=cache_control
             ))
-
+    
     # Last section doesn't get cache control
     if sections[-1].strip():
         parts.append(MessagePart(
             type="text",
             content=sections[-1]
         ))
-
+    
     return parts
 
 
-def process_message_with_cache_and_images(content_string: str, cache_type: str = "ephemeral",
-                                          skip_gifs: bool = False) -> List[MessagePart]:
+def process_message_with_cache_and_images(content_string: str, cache_type: str = "ephemeral", skip_gifs: bool = False) -> List[MessagePart]:
     """Process a message that may contain both cache markers and image markers.
-
+    
     Args:
         content_string (str): The message content that may contain cache and/or image markers
         cache_type (str): The type of cache control to apply: "ephemeral", "5m", "1h"
         skip_gifs (bool): Whether to skip GIF images
-
+        
     Returns:
         List[MessagePart]: A list of MessagePart objects with appropriate metadata
-
+    
     Notes:
         - Cache markers: <|cache_breakpoint|>
         - Image markers: <|begin_of_img_url|>URL<|end_of_img_url|>
@@ -2482,7 +2441,7 @@ def process_message_with_cache_and_images(content_string: str, cache_type: str =
           - "1h": Cache for 1 hour
     """
     import re
-
+    
     # Map user-friendly cache types to API values. Support legacy aliases for backwards compatibility.
     cache_type_map = {
         "ephemeral": {"type": "ephemeral"},
@@ -2492,24 +2451,24 @@ def process_message_with_cache_and_images(content_string: str, cache_type: str =
         "5min": {"type": "ephemeral", "ttl": "5m"},
         "1hour": {"type": "ephemeral", "ttl": "1h"},
     }
-
+    
     cache_control = cache_type_map.get(cache_type, {"type": "ephemeral"})
-
+    
     # First split by cache markers
     cache_sections = re.split(r"<\|cache_breakpoint\|>", content_string)
-
+    
     all_parts = []
-
+    
     for cache_idx, cache_section in enumerate(cache_sections):
         # Determine if this section should have cache control
         should_cache = cache_idx < len(cache_sections) - 1
-
+        
         # Process images within this cache section
         image_sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", cache_section)
-
+        
         # First, collect all parts for this cache section
         section_parts = []
-
+        
         if len(image_sections) == 1:
             # No images in this section
             if cache_section.strip():
@@ -2536,26 +2495,26 @@ def process_message_with_cache_and_images(content_string: str, cache_type: str =
                             content=section,
                             mime_type=mime_type
                         ))
-
+        
         # If this section should be cached, apply cache_control ONLY to the LAST part
         if should_cache and section_parts:
             # Apply cache control to the last part in this section
             section_parts[-1].cache_control = cache_control
-
+        
         # Add all parts from this section to the overall list
         all_parts.extend(section_parts)
-
+    
     return all_parts
 
 
 def process_image_message(content_string, skip_gifs=False, role="user"):
     """Process a message that may contain image URLs markers.
-
+    
     Args:
         content_string (str): The message content that may contain image URL markers
         skip_gifs (bool): Whether to skip GIF images
         role (str): The role of the message sender ('user', 'system', 'assistant', etc.)
-
+        
     Returns:
         list: A list of content parts (text and images)
     """
@@ -2567,8 +2526,8 @@ def process_image_message(content_string, skip_gifs=False, role="user"):
     sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", content_string)
     if len(sections) == 1:
         return content_string
-
-    print(f"[DEBUG] Processing message with {(len(sections) - 1) // 2} embedded images", file=sys.stderr)
+    
+    print(f"[DEBUG] Processing message with {(len(sections)-1)//2} embedded images", file=sys.stderr)
     content = []
     for i, section in enumerate(sections):
         if i % 2 == 0:
@@ -2576,8 +2535,7 @@ def process_image_message(content_string, skip_gifs=False, role="user"):
                 content.append({"type": "text", "text": section})
         else:
             try:
-                print(f"[DEBUG] Processing image URL: {section[:100]}{'...' if len(section) > 100 else ''}",
-                      file=sys.stderr)
+                print(f"[DEBUG] Processing image URL: {section[:100]}{'...' if len(section) > 100 else ''}", file=sys.stderr)
                 result = download_and_encode_image(section, skip_gifs=skip_gifs)
                 if result[0] is None:  # Skip if image was filtered out
                     continue
@@ -2596,14 +2554,14 @@ def process_image_message(content_string, skip_gifs=False, role="user"):
             except requests.RequestException as e:
                 print(f"[DEBUG] Failed to download image: {str(e)}", file=sys.stderr)
                 continue
-
+    
     # Add role information for future compatibility with Gemini format
     gemini_role = role
     if role == 'assistant':
         gemini_role = 'model'
     elif role not in ['user', 'model']:
         gemini_role = 'user'
-
+    
     return {"role": gemini_role, "content": content}
 
 
@@ -2620,30 +2578,23 @@ def tokenize(model: str, string: str) -> List[int]:
     except NotImplementedError:
         vendor = None
     # actual tokenizer for claude 3.x models is unknown
-    # print(f"[DEBUG] Tokenizing {model} with vendor {vendor}", file=sys.stderr)
-    if vendor == "openai" or vendor == "bedrock" or vendor == "aws-bedrock" or model == "gpt2" or model.startswith(
-            "anthropic/claude") or model.startswith("anthropic.") or model.startswith(
-            "claude-3") or model == "claude-opus-4-1-20250805" or model.startswith(
-            "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith(
-        "aion") or model.startswith(
-        "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
-        "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith(
-        "deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith(
-        "gpt-image-1") or model.startswith("moonshotai/") or model.startswith("hermes-4") or model == "Hermes-4-405B":
+    #print(f"[DEBUG] Tokenizing {model} with vendor {vendor}", file=sys.stderr)
+    if vendor == "openai" or vendor == "bedrock" or vendor == "aws-bedrock" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("anthropic.") or model.startswith("claude-3") or model == "claude-opus-4-1-20250805" or model.startswith(
+            "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
+            "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
+            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/") or model.startswith("hermes-4") or model == "Hermes-4-405B":
         # tiktoken internally caches loaded tokenizers
-        # print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
+        #print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
 
         # Handle OpenAI image models specifically for their text prompts
         if model.startswith("dall-e") or model == "gpt-image-1":
             # Prompts for image models are text; use a common/suitable tokenizer.
             tokenizer = tiktoken.get_encoding("gpt2")
-        elif "deployedModel" in model:  # Added for RunPod deployed models
+        elif "deployedModel" in model: # Added for RunPod deployed models
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
-        elif model.startswith("anthropic/claude-") or model.startswith("anthropic.") or model.startswith(
-                "claude-3") or model == "claude-opus-4-1-20250805":
+        elif model.startswith("anthropic/claude-") or model.startswith("anthropic.") or model.startswith("claude-3") or model == "claude-opus-4-1-20250805":
             tokenizer = tiktoken.encoding_for_model("gpt2")
-        elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith(
-                "chatgpt-4o") or model.startswith("gpt-4o"):
+        elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("chatgpt-4o") or model.startswith("gpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
         elif model.startswith("gpt-4.5-preview"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
@@ -2676,9 +2627,9 @@ def tokenize(model: str, string: str) -> List[int]:
         elif model.startswith("moonshotai/"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         else:
-            # print(f"[DEBUG] Getting tokenizer for {model}", file=sys.stderr)
+            #print(f"[DEBUG] Getting tokenizer for {model}", file=sys.stderr)
             tokenizer = tiktoken.encoding_for_model(model)
-            # sprint(f"[DEBUG] Tokenizer: {tokenizer}", file=sys.stderr)
+            #sprint(f"[DEBUG] Tokenizer: {tokenizer}", file=sys.stderr)
         # encode special tokens as normal
         # XXX: make this an option
         return tokenizer.encode(string, allowed_special="all")
@@ -2750,8 +2701,7 @@ def untokenize(model: str, token_ids: List[int]) -> str:
         # tiktoken internally caches loaded tokenizers
         # Handle OpenAI image models specifically for their text prompts
         if model.startswith("dall-e") or model == "gpt-image-1":
-            print(f"[DEBUG] Using o200k_base tokenizer for OpenAI image model prompt (untokenize): {model}",
-                  file=sys.stderr)
+            print(f"[DEBUG] Using o200k_base tokenizer for OpenAI image model prompt (untokenize): {model}", file=sys.stderr)
             tokenizer = tiktoken.get_encoding("gpt2")
         else:
             tokenizer = tiktoken.encoding_for_model(model)
@@ -2787,7 +2737,7 @@ def pick_vendor(model, custom_config=None):
                 for pattern in vendor["provides"]:
                     if pattern == model:  # Exact match first
                         return vendor_name
-
+        
         # Fall back to regex pattern matches
         for vendor_name, vendor in custom_config.items():
             if vendor["provides"] is not None:
@@ -2797,23 +2747,23 @@ def pick_vendor(model, custom_config=None):
 
     model = MODEL_ALIASES.get(model, model)
     if (
-            "ada" in model
-            or "babbage" in model
-            or "curie" in model
-            or "davinci" in model
-            or "cushman" in model
-            or "text-moderation-" in model
-            or model.startswith("ft-")
-            or model.startswith("gpt-4")
-            or model.startswith("gpt-5")
-            or model.startswith("gpt-3.5-")
-            or model.startswith("o1-")
-            or model.startswith("gpt-4.")
-            or model.startswith("o3")
-            or model.startswith("o4-mini")
-            or model.startswith("dall-e")  # Added for DALL-E models
-            or model == "gpt-image-1"  # Added for gpt-image-1
-            or "deployedModel" in model  # Added for RunPod serverless models
+        "ada" in model
+        or "babbage" in model
+        or "curie" in model
+        or "davinci" in model
+        or "cushman" in model
+        or "text-moderation-" in model
+        or model.startswith("ft-")
+        or model.startswith("gpt-4")
+        or model.startswith("gpt-5")
+        or model.startswith("gpt-3.5-")
+        or model.startswith("o1-")
+        or model.startswith("gpt-4.")
+        or model.startswith("o3")
+        or model.startswith("o4-mini")
+        or model.startswith("dall-e") # Added for DALL-E models
+        or model == "gpt-image-1"      # Added for gpt-image-1
+        or "deployedModel" in model    # Added for RunPod serverless models
     ):
         return "openai"
     elif "j1-" in model or model.startswith("j2-"):
@@ -2856,8 +2806,7 @@ def max_token_length_inner(model):
         return 1024
     elif model == "gpt-4-32k":
         return 32769
-    elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith(
-            "chatgpt-4o") or model.startswith("gpt-4o"):
+    elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("chatgpt-4o") or model.startswith("gpt-4o"):
         return 128_000
     elif model == "gpt-4.5-preview":
         return 128_000  # gpt-4.5-preview has a 128k context window
@@ -2894,9 +2843,9 @@ def max_token_length_inner(model):
     elif model == "DeepHermes-3-Mistral-24B-Preview":
         return 31000
     elif model in (
-            "text-embedding-ada-002",
-            "text-embedding-3-small",
-            "text-embedding-3-large",
+        "text-embedding-ada-002",
+        "text-embedding-3-small",
+        "text-embedding-3-large",
     ):
         return 8191
     elif model.startswith("text-embedding-") and model.endswith("-001"):
@@ -2930,11 +2879,11 @@ def max_token_length_inner(model):
     elif model.startswith("claude"):
         return 100_000 * 0.7
     elif (
-            "ada" in model
-            or "babbage" in model
-            or "curie" in model
-            or "davinci" in model
-            or "cushman" in model
+        "ada" in model
+        or "babbage" in model
+        or "curie" in model
+        or "davinci" in model
+        or "cushman" in model
     ):
         return 2049
     elif model == "google/gemma-3-27b-it":
@@ -2953,11 +2902,11 @@ def max_token_length_inner(model):
         if model == "moonshotai/kimi-k2":
             return 130000  # 130k context length
         return 130000  # Default for Moonshot models
-    elif "deployedModel" in model:  # Added for RunPod deployed models
+    elif "deployedModel" in model: # Added for RunPod deployed models
         return 64000
     elif model == "dall-e-3" or model == "gpt-image-1":
         # DALL-E 3 / gpt-image-1 prompt limit is up to 4000 characters. Approx 4 chars/token => 1000 tokens
-        return 6000  # User updated this value
+        return 6000 # User updated this value
     elif model == "dall-e-2":
         # DALL-E 2 prompt limit is 1000 characters. Approx 4 chars/token => 250 tokens
         return 250
@@ -3002,7 +2951,7 @@ class InteractiveIntermodel(cmd.Cmd):
         Usage: c <model> <prompt>
         """
         model = arg.split()[0]
-        prompt = arg[arg.index(model) + len(model) + 1:]
+        prompt = arg[arg.index(model) + len(model) + 1 :]
         try:
             print(complete_sync(model, pick_vendor(model), prompt))
         except NotImplementedError:
@@ -3015,7 +2964,7 @@ class InteractiveIntermodel(cmd.Cmd):
         Usage: t <model> <prompt>
         """
         model = arg.split()[0]
-        prompt = arg[arg.index(model) + len(model) + 1:]
+        prompt = arg[arg.index(model) + len(model) + 1 :]
         try:
             print(tokenize(model, prompt))
         except NotImplementedError:
@@ -3038,7 +2987,7 @@ def _log_error(info: dict):
 
 def _log_gemini_request(request_data, log_dir):
     """Log Gemini request data to a JSON file.
-
+    
     Args:
         request_data (dict): The request data to log
         log_dir (str): The base directory for logs
@@ -3135,7 +3084,7 @@ def _log_gemini_request(request_data, log_dir):
 
 def _log_gemini_response(response, log_dir, request_log_file=None):
     """Log Gemini response data to a JSON file.
-
+    
     Args:
         response: The Gemini API response to log
         log_dir (str): The base directory for logs
@@ -3145,14 +3094,14 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
     import os
     import datetime
     import glob
-
+    
     # Create gemini directory within log_dir if it doesn't exist
     gemini_log_dir = os.path.join(log_dir, "gemini")
     os.makedirs(gemini_log_dir, exist_ok=True)
-
+    
     # Generate filename with timestamp and matching request number if available
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
+    
     if request_log_file:
         # Extract the request number to maintain relationship
         basename = os.path.basename(request_log_file)
@@ -3167,10 +3116,10 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
         else:
             next_num = 1
         filename = os.path.join(log_dir, f"gemini_response_{next_num:04d}_{timestamp}.json")
-
+    
     # Process response to a serializable format
     processed_data = {}
-
+    
     # Capture all direct attributes of the response
     try:
         # Get all available attributes from the response object
@@ -3179,7 +3128,7 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
             # Skip private/internal attributes and methods
             if attr.startswith('_') or callable(getattr(response, attr)):
                 continue
-
+                
             # Add the attribute value to processed data
             try:
                 attr_value = getattr(response, attr)
@@ -3189,14 +3138,14 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
                 processed_data[f"_{attr}_error"] = f"Error accessing {attr}: {str(e)}"
     except Exception as e:
         processed_data["_attrs_error"] = f"Error capturing response attributes: {str(e)}"
-
+    
     # Check if response has candidates
     if hasattr(response, "candidates") and response.candidates:
         processed_data["candidates"] = []
-
+        
         for candidate in response.candidates:
             candidate_data = {"_raw_attrs": {}}
-
+            
             # Capture all attributes of each candidate
             try:
                 for attr in dir(candidate):
@@ -3210,19 +3159,18 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
                         candidate_data["_raw_attrs"][f"{attr}_error"] = str(e)
             except Exception as e:
                 candidate_data["_raw_attrs_error"] = str(e)
-
+            
             if hasattr(candidate, "content") and candidate.content:
                 content_data = {"parts": []}
-
+                
                 # Get role if available
                 if hasattr(candidate.content, "role"):
                     content_data["role"] = candidate.content.role
-
+                
                 # Capture all other content attributes
                 try:
                     for attr in dir(candidate.content):
-                        if attr.startswith('_') or callable(getattr(candidate.content, attr)) or attr in ['parts',
-                                                                                                          'role']:
+                        if attr.startswith('_') or callable(getattr(candidate.content, attr)) or attr in ['parts', 'role']:
                             continue
                         try:
                             attr_value = getattr(candidate.content, attr)
@@ -3231,17 +3179,16 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
                             content_data[f"_attr_{attr}_error"] = str(e)
                 except Exception as e:
                     content_data["_attrs_error"] = str(e)
-
+                
                 # Process the parts
-                if hasattr(candidate.content, "parts") and candidate.content.parts:
+                if hasattr(candidate.content, "parts"):
                     for part in candidate.content.parts:
                         part_data = {"_raw_attrs": {}}
-
+                        
                         # Capture all part attributes
                         try:
                             for attr in dir(part):
-                                if attr.startswith('_') or callable(getattr(part, attr)) or attr in ['text',
-                                                                                                     'inline_data']:
+                                if attr.startswith('_') or callable(getattr(part, attr)) or attr in ['text', 'inline_data']:
                                     continue
                                 try:
                                     attr_value = getattr(part, attr)
@@ -3250,7 +3197,7 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
                                     part_data["_raw_attrs"][f"{attr}_error"] = str(e)
                         except Exception as e:
                             part_data["_raw_attrs_error"] = str(e)
-
+                        
                         if hasattr(part, "text") and part.text is not None:
                             part_data["type"] = "text"
                             part_data["text"] = part.text
@@ -3259,16 +3206,16 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
                             part_data["mime_type"] = part.inline_data.mime_type
                             part_data["data_size_bytes"] = len(part.inline_data.data)
                             part_data["data_preview"] = "(binary data, truncated)"
-
+                        
                         if part_data:
                             content_data["parts"].append(part_data)
-
+                
                 candidate_data["content"] = content_data
-
+            
             # Add finish reason if available
             if hasattr(candidate, "finish_reason"):
                 candidate_data["finish_reason"] = candidate.finish_reason
-
+                
             # Add prompt feedback if available
             if hasattr(candidate, "prompt_feedback") and candidate.prompt_feedback:
                 candidate_data["prompt_feedback"] = {}
@@ -3283,13 +3230,13 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
                             candidate_data["prompt_feedback"][f"{attr}_error"] = str(e)
                 except Exception as e:
                     candidate_data["prompt_feedback_error"] = str(e)
-
+                
             processed_data["candidates"].append(candidate_data)
-
+    
     # Add simple text response if present
     if hasattr(response, "text"):
         processed_data["text"] = response.text
-
+        
     # Add response usage information if available
     if hasattr(response, "usage") and response.usage:
         processed_data["usage"] = {}
@@ -3304,11 +3251,11 @@ def _log_gemini_response(response, log_dir, request_log_file=None):
                     processed_data["usage"][f"{attr}_error"] = str(e)
         except Exception as e:
             processed_data["usage_error"] = str(e)
-
+    
     # Write to file
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(processed_data, f, indent=2, ensure_ascii=False)
-
+        
     print(f"[DEBUG] Logged Gemini response to {filename}", file=sys.stderr)
     return filename
 
@@ -3319,7 +3266,7 @@ if __name__ == "__main__":
 
 def _log_openai_request(request_data, log_dir):
     """Log OpenAI request data to a JSON file.
-
+    
     Args:
         request_data (dict): The request data to log.
         log_dir (str): The base directory for logs.
@@ -3329,11 +3276,11 @@ def _log_openai_request(request_data, log_dir):
     import datetime
     import glob
     import re
-
+    
     # Create openai subdirectory within log_dir if it doesn't exist
     openai_log_dir = os.path.join(log_dir, "openai")
     os.makedirs(openai_log_dir, exist_ok=True)
-
+    
     # Find highest existing log number
     existing_logs = glob.glob(os.path.join(openai_log_dir, "openai_request_*.json"))
     if existing_logs:
@@ -3341,38 +3288,38 @@ def _log_openai_request(request_data, log_dir):
             last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
             next_num = last_num + 1
         except (IndexError, ValueError):
-            # Handle cases where filename format might be unexpected
-            next_num = len(existing_logs) + 1
+             # Handle cases where filename format might be unexpected
+             next_num = len(existing_logs) + 1
     else:
         next_num = 1
 
     # Generate filename with timestamp and incrementing number
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = os.path.join(openai_log_dir, f"openai_request_{next_num:04d}_{timestamp}.json")
-
+    
     # Write to file
     try:
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(request_data, f, indent=2, ensure_ascii=False)
         print(f"[DEBUG] Logged OpenAI request to {filename}", file=sys.stderr)
     except TypeError as e:
-        print(f"[ERROR] Failed to serialize OpenAI request data for logging: {e}", file=sys.stderr)
-        # Attempt to log with a simple string representation as fallback
-        try:
-            with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
-                f.write(str(request_data))
-            print(f"[DEBUG] Logged OpenAI request (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
-        except Exception as fallback_e:
-            print(f"[ERROR] Fallback OpenAI request logging failed: {fallback_e}", file=sys.stderr)
+         print(f"[ERROR] Failed to serialize OpenAI request data for logging: {e}", file=sys.stderr)
+         # Attempt to log with a simple string representation as fallback
+         try:
+             with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
+                 f.write(str(request_data))
+             print(f"[DEBUG] Logged OpenAI request (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
+         except Exception as fallback_e:
+             print(f"[ERROR] Fallback OpenAI request logging failed: {fallback_e}", file=sys.stderr)
     except Exception as e:
-        print(f"[ERROR] Failed to log OpenAI request to {filename}: {e}", file=sys.stderr)
+         print(f"[ERROR] Failed to log OpenAI request to {filename}: {e}", file=sys.stderr)
 
     return filename
 
 
 def _log_openai_response(response_data, status_code, log_dir, request_log_file=None):
     """Log OpenAI response data to a JSON file.
-
+    
     Args:
         response_data (dict or str): The response data (JSON or error string).
         status_code (int): The HTTP status code of the response.
@@ -3384,7 +3331,7 @@ def _log_openai_response(response_data, status_code, log_dir, request_log_file=N
     import datetime
     import glob
     import re
-
+    
     # Create openai subdirectory within log_dir if it doesn't exist
     openai_log_dir = os.path.join(log_dir, "openai")
     os.makedirs(openai_log_dir, exist_ok=True)
@@ -3396,7 +3343,7 @@ def _log_openai_response(response_data, status_code, log_dir, request_log_file=N
         basename = os.path.basename(request_log_file)
         request_num_match = re.search(r'_(\d+)_', basename)
         if request_num_match:
-            request_num = request_num_match.group(1)  # Extract number part (e.g., 0001)
+            request_num = request_num_match.group(1) # Extract number part (e.g., 0001)
             filename = os.path.join(openai_log_dir, f"openai_response_{request_num}_{timestamp}.json")
         else:
             # Fallback if request filename format is unexpected
@@ -3406,19 +3353,17 @@ def _log_openai_response(response_data, status_code, log_dir, request_log_file=N
         existing_logs = glob.glob(os.path.join(openai_log_dir, "openai_response_*.json"))
         if existing_logs:
             try:
-                last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs if
-                                os.path.basename(f).startswith('openai_response_') and len(
-                                    os.path.basename(f).split('_')) > 2])
+                last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs if os.path.basename(f).startswith('openai_response_') and len(os.path.basename(f).split('_')) > 2])
                 next_num = last_num + 1
             except (IndexError, ValueError):
-                next_num = len(existing_logs) + 1  # Fallback numbering
+                next_num = len(existing_logs) + 1 # Fallback numbering
         else:
             next_num = 1
         filename = os.path.join(openai_log_dir, f"openai_response_{next_num:04d}_{timestamp}.json")
 
     processed_data = {
         "status_code": status_code,
-        "response_body": response_data  # Assuming response_data is already JSON/dict
+        "response_body": response_data # Assuming response_data is already JSON/dict
     }
 
     # Write to file
@@ -3427,15 +3372,15 @@ def _log_openai_response(response_data, status_code, log_dir, request_log_file=N
             json.dump(processed_data, f, indent=2, ensure_ascii=False)
         print(f"[DEBUG] Logged OpenAI response to {filename}", file=sys.stderr)
     except TypeError as e:
-        print(f"[ERROR] Failed to serialize OpenAI response data for logging: {e}", file=sys.stderr)
-        try:
-            with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
-                f.write(str(processed_data))
-            print(f"[DEBUG] Logged OpenAI response (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
-        except Exception as fallback_e:
-            print(f"[ERROR] Fallback OpenAI response logging failed: {fallback_e}", file=sys.stderr)
+         print(f"[ERROR] Failed to serialize OpenAI response data for logging: {e}", file=sys.stderr)
+         try:
+             with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
+                 f.write(str(processed_data))
+             print(f"[DEBUG] Logged OpenAI response (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
+         except Exception as fallback_e:
+              print(f"[ERROR] Fallback OpenAI response logging failed: {fallback_e}", file=sys.stderr)
     except Exception as e:
-        print(f"[ERROR] Failed to log OpenAI response to {filename}: {e}", file=sys.stderr)
+         print(f"[ERROR] Failed to log OpenAI response to {filename}: {e}", file=sys.stderr)
 
     return filename
 
@@ -3458,8 +3403,8 @@ def _log_anthropic_request(request_data, log_dir):
             last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
             next_num = last_num + 1
         except (IndexError, ValueError):
-            # Handle cases where filename format might be unexpected
-            next_num = len(existing_logs) + 1
+             # Handle cases where filename format might be unexpected
+             next_num = len(existing_logs) + 1
     else:
         next_num = 1
 
@@ -3471,7 +3416,7 @@ def _log_anthropic_request(request_data, log_dir):
     class CustomEncoder(json.JSONEncoder):
         def default(self, obj):
             # Add handling for specific non-serializable types if encountered
-            return str(obj)  # Basic fallback
+            return str(obj) # Basic fallback
 
     # Write to file
     try:
@@ -3479,20 +3424,18 @@ def _log_anthropic_request(request_data, log_dir):
             json.dump(request_data, f, indent=2, ensure_ascii=False, cls=CustomEncoder)
         print(f"[DEBUG] Logged Anthropic request to {filename}", file=sys.stderr)
     except TypeError as e:
-        print(f"[ERROR] Failed to serialize Anthropic request data for logging: {e}", file=sys.stderr)
-        # Attempt to log with a simple string representation as fallback
-        try:
-            with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
-                f.write(str(request_data))
-            print(f"[DEBUG] Logged Anthropic request (fallback) to {filename.replace('.json', '.txt')}",
-                  file=sys.stderr)
-        except Exception as fallback_e:
-            print(f"[ERROR] Fallback Anthropic request logging failed: {fallback_e}", file=sys.stderr)
+         print(f"[ERROR] Failed to serialize Anthropic request data for logging: {e}", file=sys.stderr)
+         # Attempt to log with a simple string representation as fallback
+         try:
+             with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
+                 f.write(str(request_data))
+             print(f"[DEBUG] Logged Anthropic request (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
+         except Exception as fallback_e:
+             print(f"[ERROR] Fallback Anthropic request logging failed: {fallback_e}", file=sys.stderr)
     except Exception as e:
-        print(f"[ERROR] Failed to log Anthropic request to {filename}: {e}", file=sys.stderr)
+         print(f"[ERROR] Failed to log Anthropic request to {filename}: {e}", file=sys.stderr)
 
     return filename
-
 
 # Placeholder for Anthropic response logging - can be implemented similarly if needed
 # def _log_anthropic_response(response_data, status_code, request_log_file=None, log_dir="intermodel_logs"):
@@ -3500,7 +3443,7 @@ def _log_anthropic_request(request_data, log_dir):
 
 def _log_anthropic_response(response_data, log_dir, request_log_file=None):
     """Log Anthropic response data to a JSON file.
-
+    
     Args:
         response_data (dict or str): The response data (JSON or error string).
         log_dir (str): The base directory for logs.
@@ -3511,7 +3454,7 @@ def _log_anthropic_response(response_data, log_dir, request_log_file=None):
     import datetime
     import glob
     import re
-
+    
     # Create anthropic subdirectory within log_dir if it doesn't exist
     anthropic_log_dir = os.path.join(log_dir, "anthropic")
     os.makedirs(anthropic_log_dir, exist_ok=True)
@@ -3523,7 +3466,7 @@ def _log_anthropic_response(response_data, log_dir, request_log_file=None):
         basename = os.path.basename(request_log_file)
         request_num_match = re.search(r'_(\d+)_', basename)
         if request_num_match:
-            request_num = request_num_match.group(1)  # Extract number part (e.g., 0001)
+            request_num = request_num_match.group(1) # Extract number part (e.g., 0001)
             filename = os.path.join(anthropic_log_dir, f"anthropic_response_{request_num}_{timestamp}.json")
         else:
             # Fallback if request filename format is unexpected
@@ -3533,12 +3476,10 @@ def _log_anthropic_response(response_data, log_dir, request_log_file=None):
         existing_logs = glob.glob(os.path.join(anthropic_log_dir, "anthropic_response_*.json"))
         if existing_logs:
             try:
-                last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs if
-                                os.path.basename(f).startswith('anthropic_response_') and len(
-                                    os.path.basename(f).split('_')) > 2])
+                last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs if os.path.basename(f).startswith('anthropic_response_') and len(os.path.basename(f).split('_')) > 2])
                 next_num = last_num + 1
             except (IndexError, ValueError):
-                next_num = len(existing_logs) + 1  # Fallback numbering
+                next_num = len(existing_logs) + 1 # Fallback numbering
         else:
             next_num = 1
         filename = os.path.join(anthropic_log_dir, f"anthropic_response_{next_num:04d}_{timestamp}.json")
@@ -3552,7 +3493,7 @@ def _log_anthropic_response(response_data, log_dir, request_log_file=None):
             # Skip private/internal attributes and methods
             if attr.startswith('_') or callable(getattr(response_data, attr)):
                 continue
-
+            
             try:
                 attr_value = getattr(response_data, attr)
                 # Special handling for content which might be a list of objects
@@ -3562,14 +3503,14 @@ def _log_anthropic_response(response_data, log_dir, request_log_file=None):
                         item_dict = {}
                         for item_attr in dir(item):
                             if not item_attr.startswith('_') and not callable(getattr(item, item_attr)):
-                                item_dict[item_attr] = str(getattr(item, item_attr))  # Convert to string for simplicity
+                                item_dict[item_attr] = str(getattr(item, item_attr)) # Convert to string for simplicity
                         processed_data[attr].append(item_dict)
                 else:
                     processed_data[attr] = str(attr_value)  # Convert to string for simplicity
             except Exception as e:
                 processed_data[f"{attr}_error"] = f"Error accessing {attr}: {str(e)}"
     except Exception as e:
-        processed_data["_raw_response_data"] = str(response_data)  # Fallback to string representation
+        processed_data["_raw_response_data"] = str(response_data) # Fallback to string representation
         processed_data["_processing_error"] = str(e)
 
     # Write to file
@@ -3578,23 +3519,22 @@ def _log_anthropic_response(response_data, log_dir, request_log_file=None):
             json.dump(processed_data, f, indent=2, ensure_ascii=False)
         print(f"[DEBUG] Logged Anthropic response to {filename}", file=sys.stderr)
     except TypeError as e:
-        print(f"[ERROR] Failed to serialize Anthropic response data for logging: {e}", file=sys.stderr)
-        try:
-            with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
-                f.write(str(processed_data))
-            print(f"[DEBUG] Logged Anthropic response (fallback) to {filename.replace('.json', '.txt')}",
-                  file=sys.stderr)
-        except Exception as fallback_e:
-            print(f"[ERROR] Fallback Anthropic response logging failed: {fallback_e}", file=sys.stderr)
+         print(f"[ERROR] Failed to serialize Anthropic response data for logging: {e}", file=sys.stderr)
+         try:
+             with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
+                 f.write(str(processed_data))
+             print(f"[DEBUG] Logged Anthropic response (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
+         except Exception as fallback_e:
+              print(f"[ERROR] Fallback Anthropic response logging failed: {fallback_e}", file=sys.stderr)
     except Exception as e:
-        print(f"[ERROR] Failed to log Anthropic response to {filename}: {e}", file=sys.stderr)
+         print(f"[ERROR] Failed to log Anthropic response to {filename}: {e}", file=sys.stderr)
 
     return filename
 
 
 def _log_bedrock_request(request_data, log_dir):
     """Log Bedrock request data to a JSON file.
-
+    
     Args:
         request_data (dict): The request data to log
         log_dir (str): The base directory for logs
@@ -3603,11 +3543,11 @@ def _log_bedrock_request(request_data, log_dir):
     import os
     import datetime
     import glob
-
+    
     # Create bedrock directory within log_dir if it doesn't exist
     bedrock_log_dir = os.path.join(log_dir, "bedrock")
     os.makedirs(bedrock_log_dir, exist_ok=True)
-
+    
     # Find highest existing log number
     existing_logs = glob.glob(os.path.join(bedrock_log_dir, "bedrock_request_*.json"))
     if existing_logs:
@@ -3615,8 +3555,8 @@ def _log_bedrock_request(request_data, log_dir):
             last_num = max([int(os.path.basename(f).split('_')[2].split('.')[0]) for f in existing_logs])
             next_num = last_num + 1
         except (IndexError, ValueError):
-            # Handle cases where filename format might be unexpected
-            next_num = len(existing_logs) + 1
+             # Handle cases where filename format might be unexpected
+             next_num = len(existing_logs) + 1
     else:
         next_num = 1
 
@@ -3628,7 +3568,7 @@ def _log_bedrock_request(request_data, log_dir):
     class CustomEncoder(json.JSONEncoder):
         def default(self, obj):
             # Add handling for specific non-serializable types if encountered
-            return str(obj)  # Basic fallback
+            return str(obj) # Basic fallback
 
     # Write to file
     try:
@@ -3636,23 +3576,23 @@ def _log_bedrock_request(request_data, log_dir):
             json.dump(request_data, f, indent=2, ensure_ascii=False, cls=CustomEncoder)
         print(f"[DEBUG] Logged Bedrock request to {filename}", file=sys.stderr)
     except TypeError as e:
-        print(f"[ERROR] Failed to serialize Bedrock request data for logging: {e}", file=sys.stderr)
-        # Attempt to log with a simple string representation as fallback
-        try:
-            with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
-                f.write(str(request_data))
-            print(f"[DEBUG] Logged Bedrock request (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
-        except Exception as fallback_e:
-            print(f"[ERROR] Fallback Bedrock request logging failed: {fallback_e}", file=sys.stderr)
+         print(f"[ERROR] Failed to serialize Bedrock request data for logging: {e}", file=sys.stderr)
+         # Attempt to log with a simple string representation as fallback
+         try:
+             with open(filename.replace(".json", ".txt"), "w", encoding="utf-8") as f:
+                 f.write(str(request_data))
+             print(f"[DEBUG] Logged Bedrock request (fallback) to {filename.replace('.json', '.txt')}", file=sys.stderr)
+         except Exception as fallback_e:
+             print(f"[ERROR] Fallback Bedrock request logging failed: {fallback_e}", file=sys.stderr)
     except Exception as e:
-        print(f"[ERROR] Failed to log Bedrock request to {filename}: {e}", file=sys.stderr)
+         print(f"[ERROR] Failed to log Bedrock request to {filename}: {e}", file=sys.stderr)
 
     return filename
 
 
 def _log_bedrock_response(response_data, log_dir, request_log_file=None):
     """Log Bedrock response data to a JSON file.
-
+    
     Args:
         response_data: The response data (Anthropic response object or dict).
         log_dir (str): The base directory for logs.
@@ -3662,14 +3602,14 @@ def _log_bedrock_response(response_data, log_dir, request_log_file=None):
     import os
     import datetime
     import glob
-
+    
     # Create bedrock subdirectory within log_dir if it doesn't exist
     bedrock_log_dir = os.path.join(log_dir, "bedrock")
     os.makedirs(bedrock_log_dir, exist_ok=True)
-
+    
     # Generate filename with timestamp and matching request number if available
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
+    
     if request_log_file:
         # Extract the request number to maintain relationship
         basename = os.path.basename(request_log_file)
@@ -3684,7 +3624,7 @@ def _log_bedrock_response(response_data, log_dir, request_log_file=None):
         else:
             next_num = 1
         filename = os.path.join(bedrock_log_dir, f"bedrock_response_{next_num:04d}_{timestamp}.json")
-
+    
     # Convert response to a serializable format
     try:
         if hasattr(response_data, 'model_dump'):
@@ -3713,7 +3653,7 @@ def _log_bedrock_response(response_data, log_dir, request_log_file=None):
             response_dict = response_data
     except Exception as e:
         response_dict = {"error": f"Failed to serialize response: {str(e)}", "raw": str(response_data)}
-
+    
     # Write to file
     try:
         with open(filename, "w", encoding="utf-8") as f:
@@ -3737,13 +3677,13 @@ def is_openai_audio_model(model: str) -> bool:
 
 
 async def prepare_openai_messages(
-        messages: Optional[List[dict]],
-        prompt: Optional[str],
-        session: aiohttp.ClientSession,
-        model: str
+    messages: Optional[List[dict]],
+    prompt: Optional[str],
+    session: aiohttp.ClientSession,
+    model: str
 ) -> List[dict]:
     """Prepares a list of messages for the OpenAI API, handling multimodal inputs and audio history."""
-
+    
     supports_audio = is_openai_audio_model(model)
     if not supports_audio:
         print(f"[DEBUG] Model {model} does not support audio. Stripping audio content.", file=sys.stderr)
@@ -3775,7 +3715,7 @@ async def prepare_openai_messages(
     tokens = re.split(pattern, prompt)
 
     user_content_parts = []
-
+    
     for token in tokens:
         if not token: continue
 
@@ -3786,7 +3726,7 @@ async def prepare_openai_messages(
             tag_type, url = img_audio_url_match.groups()
             url = url.strip()
             if not url: continue
-
+            
             if tag_type == 'img':
                 user_content_parts.append({"type": "image_url", "image_url": {"url": url}})
             elif tag_type == 'audio':
@@ -3805,8 +3745,7 @@ async def prepare_openai_messages(
                         print(f"[ERROR] Failed to process audio URL {url}: {e}", file=sys.stderr)
                         user_content_parts.append({"type": "text", "text": f"[Error processing audio URL: {url}]"})
                 else:
-                    user_content_parts.append(
-                        {"type": "text", "text": "[Audio content removed: model does not support audio]"})
+                    user_content_parts.append({"type": "text", "text": "[Audio content removed: model does not support audio]"})
         elif audio_ref_match:
             if supports_audio:
                 audio_id = audio_ref_match.group(1).strip()
@@ -3814,8 +3753,7 @@ async def prepare_openai_messages(
                     # Inject a preceding assistant message to provide the audio context
                     final_messages.append({'role': 'assistant', 'content': None, 'audio': {'id': audio_id}})
             else:
-                user_content_parts.append(
-                    {"type": "text", "text": "[Audio reference removed: model does not support audio]"})
+                user_content_parts.append({"type": "text", "text": "[Audio reference removed: model does not support audio]"})
         else:
             # It's a regular text part
             if token.strip():
@@ -3824,25 +3762,24 @@ async def prepare_openai_messages(
     # 4. Add the final user message if it has any content parts
     if user_content_parts:
         final_messages.append({"role": "user", "content": user_content_parts})
-
+        
     return final_messages
-
 
 def convert_literal_newlines_for_openai(text: str) -> str:
     """Convert literal \\n strings to actual newlines in OpenAI response text.
-
+    
     Sometimes OpenAI models return literal \\n instead of actual newline characters.
     This function detects and converts them to proper newlines.
-
+     
     Args:
         text (str): The text to process
-
+         
     Returns:
         str: Text with literal \\n converted to actual newlines
     """
     if not text:
         return text
-
+     
     # Replace literal \n with actual newlines
     # Be careful to only replace literal \n, not already-escaped \\n
     # We'll use a simple approach: replace \n with actual newlines if it's not preceded by a backslash
@@ -3851,26 +3788,26 @@ def convert_literal_newlines_for_openai(text: str) -> str:
 
 def convert_messages_to_anthropic_prompt(messages: List[dict]) -> str:
     """Convert OpenAI-style messages to prompt string for OpenRouter.
-
+    
     This handles the special case where Anthropic models on OpenRouter use the
     /chat/completions endpoint but with a 'prompt' parameter instead of 'messages'.
-
+    
     Simply extracts and concatenates content without role formatting.
-
+    
     Args:
         messages: List of OpenAI-style message dicts
-
+        
     Returns:
         str: Concatenated prompt string
     """
     if not messages:
         return ""
-
+    
     prompt_parts = []
-
+    
     for message in messages:
         content = message.get("content", "")
-
+        
         # Extract text content if it's in OpenAI multimodal format
         if isinstance(content, list):
             text_parts = []
@@ -3878,11 +3815,11 @@ def convert_messages_to_anthropic_prompt(messages: List[dict]) -> str:
                 if part.get("type") == "text":
                     text_parts.append(part.get("text", ""))
             content = " ".join(text_parts)
-
+        
         if content:
             prompt_parts.append(content)
-
+    
     prompt = " ".join(prompt_parts).strip()
     print(f"[DEBUG] Converted {len(messages)} messages to prompt: {len(prompt)} chars")
-
+    
     return prompt
