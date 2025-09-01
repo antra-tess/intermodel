@@ -392,6 +392,7 @@ async def complete(
     if vendor.startswith("openai"):
         import sys
         import os
+        import re
 
         global session
         if session is None:
@@ -1685,47 +1686,54 @@ async def complete(
                     elif role == 'assistant' and message_history_format:
                         speaker_name = message_history_format.assistant_name
                     # else: speaker_name remains None if role is unknown and not in msg dict
-                 
-                name_prefix = "" # Default to no prefix
+
+                name_prefix = ""  # Default to no prefix
                 # Only apply prefix for non-assistant roles and not for the last message (which must be 'model' role)
-                if role != 'assistant' and not is_last_message and speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
-                     try:
-                         name_prefix = message_history_format.name_format.format(speaker_name) + " " # Add space after prefix
-                     except KeyError:
-                         # Handle cases where format string might be incorrect (e.g., expects {name} but gets other keys)
-                         print(f"[WARN] Could not format name prefix for '{speaker_name}' using format '{message_history_format.name_format}'. Using raw name.", file=sys.stderr)
-                         name_prefix = f"{speaker_name}: " # Fallback prefix
-                
+                if role != 'assistant' and not is_last_message and speaker_name and message_history_format and hasattr(
+                        message_history_format, 'name_format') and message_history_format.name_format:
+                    try:
+                        name_prefix = message_history_format.name_format.format(
+                            speaker_name) + " "  # Add space after prefix
+                    except KeyError:
+                        # Handle cases where format string might be incorrect (e.g., expects {name} but gets other keys)
+                        print(
+                            f"[WARN] Could not format name prefix for '{speaker_name}' using format '{message_history_format.name_format}'. Using raw name.",
+                            file=sys.stderr)
+                        name_prefix = f"{speaker_name}: "  # Fallback prefix
+
                 formatted_content = name_prefix + content
                 if isinstance(formatted_content, str):
                     # Simple text message - check for embedded image URLs
-                    print(f"[DEBUG] Processing text message for images: {formatted_content[:200]}{'...' if len(formatted_content) > 200 else ''}", file=sys.stderr)
+                    print(
+                        f"[DEBUG] Processing text message for images: {formatted_content[:200]}{'...' if len(formatted_content) > 200 else ''}",
+                        file=sys.stderr)
                     import re
                     sections = re.split(r"<\|(?:begin_of_img_url|end_of_img_url)\|>", formatted_content)
                     print(f"[DEBUG] Split into {len(sections)} sections", file=sys.stderr)
-                    
+
                     # Extract text parts and image URLs
                     text_parts = []
                     image_urls = []
-                    
+
                     for i, section in enumerate(sections):
                         if i % 2 == 0:  # Text section
                             if section.strip():
                                 text_parts.append(section.strip())
                         else:  # Image URL
                             image_urls.append(section.strip())
-                    
+
                     # Add text part if any text exists
                     combined_text = " ".join(text_parts)
                     if combined_text:
                         parts.append(MessagePart(type="text", content=combined_text))
-                    
+
                     # Add image parts
                     for url in image_urls:
                         if url:
                             try:
                                 mime_type = guess_mime_type(url)
-                                print(f"[DEBUG] Processing image URL: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
+                                print(f"[DEBUG] Processing image URL: {url[:100]}{'...' if len(url) > 100 else ''}",
+                                      file=sys.stderr)
                                 # Handle data URLs
                                 if url.startswith("data:"):
                                     try:
@@ -1733,14 +1741,20 @@ async def complete(
                                         encoding_part, b64_data = data_part.split(',', 1)
                                         mime_type = mime_type_part.split(':')[1]
                                         parts.append(MessagePart(type="image", content=url, mime_type=mime_type))
-                                        print(f"[DEBUG] Processed data URL image from message text ({len(b64_data)} chars)", file=sys.stderr)
+                                        print(
+                                            f"[DEBUG] Processed data URL image from message text ({len(b64_data)} chars)",
+                                            file=sys.stderr)
                                     except Exception as e:
                                         print(f"[DEBUG] Failed to process data URL in message: {e}", file=sys.stderr)
                                 else:
                                     parts.append(MessagePart(type="image", content=url, mime_type=mime_type))
-                                    print(f"[DEBUG] Added image URL to parts: {url[:100]}{'...' if len(url) > 100 else ''}", file=sys.stderr)
+                                    print(
+                                        f"[DEBUG] Added image URL to parts: {url[:100]}{'...' if len(url) > 100 else ''}",
+                                        file=sys.stderr)
                             except Exception as e:
-                                print(f"[DEBUG] Error processing image URL {url[:100]}{'...' if len(url) > 100 else ''}: {e}", file=sys.stderr)
+                                print(
+                                    f"[DEBUG] Error processing image URL {url[:100]}{'...' if len(url) > 100 else ''}: {e}",
+                                    file=sys.stderr)
                                 # Skip this image and continue with text-only
                 elif isinstance(formatted_content, list):
                     # OpenAI-style list of parts
@@ -1767,7 +1781,8 @@ async def complete(
                                         # We need to pass the raw bytes somehow, maybe store temp?
                                         # For now, let's just pass the URL and handle download in convert_to_gemini
                                         parts.append(MessagePart(type="image", content=url, mime_type=mime_type))
-                                        print(f"[DEBUG] Processed data URL image for Gemini ({len(image_bytes)} bytes)", file=sys.stderr)
+                                        print(f"[DEBUG] Processed data URL image for Gemini ({len(image_bytes)} bytes)",
+                                              file=sys.stderr)
                                     except Exception as e:
                                         print(f"[DEBUG] Failed to process data URL: {e}", file=sys.stderr)
                                 else:
@@ -1811,25 +1826,29 @@ async def complete(
             # If only text, send as a single user message.
             current_parts: List[MessagePart] = []
             img_idx = 0
-            
+
             # Add all text parts first
             original_combined_text = " ".join(text_parts_all)
-            
+
             # Determine speaker name and format prefix for prompt case
-            prompt_speaker_name = name # Assuming prompt comes from the 'user' named 'name'
+            prompt_speaker_name = name  # Assuming prompt comes from the 'user' named 'name'
             prompt_name_prefix = ""
-            if prompt_speaker_name and message_history_format and hasattr(message_history_format, 'name_format') and message_history_format.name_format:
+            if prompt_speaker_name and message_history_format and hasattr(message_history_format,
+                                                                          'name_format') and message_history_format.name_format:
                 try:
-                    prompt_name_prefix = message_history_format.name_format.format(prompt_speaker_name) + " " # Add space
+                    prompt_name_prefix = message_history_format.name_format.format(
+                        prompt_speaker_name) + " "  # Add space
                 except KeyError:
-                    print(f"[WARN] Could not format name prefix for prompt user '{prompt_speaker_name}' using format '{message_history_format.name_format}'. Using raw name.", file=sys.stderr)
-                    prompt_name_prefix = f"{prompt_speaker_name}: " # Fallback prefix
-                    
+                    print(
+                        f"[WARN] Could not format name prefix for prompt user '{prompt_speaker_name}' using format '{message_history_format.name_format}'. Using raw name.",
+                        file=sys.stderr)
+                    prompt_name_prefix = f"{prompt_speaker_name}: "  # Fallback prefix
+
             combined_text = prompt_name_prefix + original_combined_text
-            
+
             if combined_text:
                 current_parts.append(MessagePart(type="text", content=combined_text))
-                
+
             # Add image parts
             for url in images_to_process_urls:
                 mime_type = guess_mime_type(url)
@@ -1846,22 +1865,23 @@ async def complete(
                         print(f"[DEBUG] Failed to process data URL in prompt: {e}", file=sys.stderr)
                 else:
                     current_parts.append(MessagePart(type="image", content=url, mime_type=mime_type))
-                
+
             if current_parts:
                 # Assume the entire prompt maps to a single 'user' message
                 processed_messages_intermediate.append(ProcessedMessage(role="user", parts=current_parts))
 
-        else: # No messages and no prompt
+        else:  # No messages and no prompt
             print(f"[DEBUG] No messages or prompt provided for Gemini.", file=sys.stderr)
             # Potentially add a default empty user message if API requires it
             # processed_messages_intermediate.append(ProcessedMessage(role="user", parts=[MessagePart(type="text", content="")]))
 
         # Convert processed messages to Gemini format using chunked inline approach
-        print(f"[DEBUG] Converting {len(processed_messages_intermediate)} processed messages for Gemini (chunked)", file=sys.stderr)
-        
+        print(f"[DEBUG] Converting {len(processed_messages_intermediate)} processed messages for Gemini (chunked)",
+              file=sys.stderr)
+
         # Build contents list preserving order of text and images (chunked approach)
         gemini_contents = []
-        
+
         for processed_msg in processed_messages_intermediate:
             try:
                 # Determine role prefix
@@ -1872,7 +1892,7 @@ async def complete(
                     role_prefix = "User: "
                 elif processed_msg.role == "system":
                     role_prefix = "System: "
-                
+
                 # Process each part in order, preserving text/image sequence
                 for part_idx, part in enumerate(processed_msg.parts):
                     if part.type == "text":
@@ -1880,15 +1900,19 @@ async def complete(
                         text_content = part.content
                         if part_idx == 0:
                             text_content = role_prefix + text_content
-                        
+
                         gemini_contents.append(text_content)
-                        print(f"[DEBUG] Added text chunk: '{text_content[:100]}{'...' if len(text_content) > 100 else ''}'", file=sys.stderr)
-                        
+                        print(
+                            f"[DEBUG] Added text chunk: '{text_content[:100]}{'...' if len(text_content) > 100 else ''}'",
+                            file=sys.stderr)
+
                     elif part.type == "image":
                         # Download image and convert to PIL Image
                         try:
-                            print(f"[DEBUG] Downloading image for Gemini: {part.content[:100]}{'...' if len(part.content) > 100 else ''}", file=sys.stderr)
-                            
+                            print(
+                                f"[DEBUG] Downloading image for Gemini: {part.content[:100]}{'...' if len(part.content) > 100 else ''}",
+                                file=sys.stderr)
+
                             if part.content.startswith("data:"):
                                 # Handle data URLs
                                 import base64
@@ -1900,51 +1924,55 @@ async def complete(
                                 response = requests.get(part.content)
                                 response.raise_for_status()
                                 image_bytes = response.content
-                            
+
                             # Convert to PIL Image
                             from PIL import Image
                             from io import BytesIO
                             image = Image.open(BytesIO(image_bytes))
                             gemini_contents.append(image)
                             print(f"[DEBUG] Added image chunk: {image.size} ({image.mode})", file=sys.stderr)
-                            
+
                         except Exception as e:
-                            print(f"[DEBUG] Failed to load image {part.content[:100]}{'...' if len(part.content) > 100 else ''}: {e}", file=sys.stderr)
+                            print(
+                                f"[DEBUG] Failed to load image {part.content[:100]}{'...' if len(part.content) > 100 else ''}: {e}",
+                                file=sys.stderr)
                             # Skip this image but continue processing
-                            
+
             except Exception as e:
                 print(f"[DEBUG] Error processing message: {e}", file=sys.stderr)
                 continue
-        
+
         # Count final content types for debug
         text_count = sum(1 for item in gemini_contents if isinstance(item, str))
         image_count = len(gemini_contents) - text_count
-        print(f"[DEBUG] Built chunked Gemini contents: {text_count} text chunks, {image_count} image chunks (total: {len(gemini_contents)})", file=sys.stderr)
-                
+        print(
+            f"[DEBUG] Built chunked Gemini contents: {text_count} text chunks, {image_count} image chunks (total: {len(gemini_contents)})",
+            file=sys.stderr)
+
         # Ensure gemini_contents is not empty if the API requires at least one message
         if not gemini_contents:
             # If all messages were skipped (e.g., only contained GIFs), send an empty user message
             print("[DEBUG] No valid messages left after conversion; sending empty text.", file=sys.stderr)
-            gemini_contents.append("(empty message)") # Use placeholder text
-            
+            gemini_contents.append("(empty message)")  # Use placeholder text
+
         print(f"[DEBUG] Sending request with {len(gemini_contents)} content objects", file=sys.stderr)
-        
+
         # Debug log content being sent
         print("[DEBUG] Content being sent:", file=sys.stderr)
         for i, content in enumerate(gemini_contents):
             if isinstance(content, str):
                 content_preview = content[:200] + '...' if len(content) > 200 else content
-                print(f"[DEBUG] Content {i+1}: Text: '{content_preview}'", file=sys.stderr)
+                print(f"[DEBUG] Content {i + 1}: Text: '{content_preview}'", file=sys.stderr)
             else:
                 # Assume PIL Image
                 try:
-                    print(f"[DEBUG] Content {i+1}: Image: {content.size} ({content.mode})", file=sys.stderr)
+                    print(f"[DEBUG] Content {i + 1}: Image: {content.size} ({content.mode})", file=sys.stderr)
                 except:
-                    print(f"[DEBUG] Content {i+1}: Unknown type: {type(content)}", file=sys.stderr)
-        
+                    print(f"[DEBUG] Content {i + 1}: Unknown type: {type(content)}", file=sys.stderr)
+
         # Configure the request based on the model type
         is_image_generation = model in ["gemini-2.0-flash-exp", "gemini-2.5-flash-image-preview"]
-        
+
         try:
             if is_image_generation:
                 # Create request data dictionary for logging
@@ -1956,12 +1984,12 @@ async def complete(
                         "safety_settings": "BLOCK_NONE for all categories"
                     }
                 }
-                
+
                 # Log the request
                 request_log_file = None
                 if log_dir:
                     request_log_file = _log_gemini_request(request_data, log_dir)
-                
+
                 # For image generation models
                 response = client.models.generate_content(
                     model=model,
@@ -2011,10 +2039,16 @@ async def complete(
                 
 
                 for candidate in response.candidates:
+                    if not hasattr(candidate, "content") or candidate.content is None:
+                        print(f"[DEBUG] Candidate has no content, skipping", file=sys.stderr)
+                        continue
+
                     for part in candidate.content.parts:
                         if part.text is not None:
                             text_content = part.text
-                            print(f"[DEBUG] Received text response: {text_content[:100]}{'...' if len(text_content) > 100 else ''}", file=sys.stderr)
+                            print(
+                                f"[DEBUG] Received text response: {text_content[:100]}{'...' if len(text_content) > 100 else ''}",
+                                file=sys.stderr)
                         if part.inline_data is not None:
                             image_data = part.inline_data.data
                             image_size = len(image_data) if image_data else 0
@@ -2963,11 +2997,11 @@ def _log_gemini_request(request_data, log_dir):
     import os
     import datetime
     import glob
-    
+
     # Create gemini directory within log_dir if it doesn't exist
     gemini_log_dir = os.path.join(log_dir, "gemini")
     os.makedirs(gemini_log_dir, exist_ok=True)
-    
+
     # Find highest existing log number
     existing_logs = glob.glob(os.path.join(gemini_log_dir, "gemini_request_*.json"))
     if existing_logs:
@@ -2975,14 +3009,14 @@ def _log_gemini_request(request_data, log_dir):
         next_num = last_num + 1
     else:
         next_num = 1
-        
+
     # Generate filename with timestamp and incrementing number
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = os.path.join(gemini_log_dir, f"gemini_request_{next_num:04d}_{timestamp}.json")
-    
+
     # Process content to preserve text but shorten image data
     processed_data = {}
-    
+
     # Deep copy dictionary with special handling for content objects
     def process_content(content_list):
         processed_contents = []
@@ -2997,7 +3031,7 @@ def _log_gemini_request(request_data, log_dir):
                 # Handle PIL Image content (new format)
                 try:
                     processed_contents.append({
-                        "type": "image", 
+                        "type": "image",
                         "size": content.size,
                         "mode": content.mode,
                         "format": getattr(content, 'format', 'unknown')
@@ -3009,19 +3043,19 @@ def _log_gemini_request(request_data, log_dir):
                         "python_type": str(type(content))
                     })
         return processed_contents
-    
+
     # Process main request data
     if "model" in request_data:
         processed_data["model"] = request_data["model"]
-    
+
     if "contents" in request_data:
         processed_data["contents"] = process_content(request_data["contents"])
-    
+
     if "config" in request_data:
         # Convert config to dict with special handling for nested objects
         config_dict = {}
-        config_source = request_data["config"] # This is already a dictionary
-        
+        config_source = request_data["config"]  # This is already a dictionary
+
         # Directly access keys from the dictionary
         if "temperature" in config_source:
             config_dict["temperature"] = config_source["temperature"]
@@ -3035,16 +3069,16 @@ def _log_gemini_request(request_data, log_dir):
             config_dict["stop_sequences"] = config_source["stop_sequences"]
         # Add other potential config keys if needed (e.g., safety_settings, response_modalities)
         if "safety_settings" in config_source:
-             config_dict["safety_settings"] = config_source["safety_settings"] # Might be complex object/string
+            config_dict["safety_settings"] = config_source["safety_settings"]  # Might be complex object/string
         if "response_modalities" in config_source:
-             config_dict["response_modalities"] = config_source["response_modalities"]
-        
+            config_dict["response_modalities"] = config_source["response_modalities"]
+
         processed_data["config"] = config_dict
-    
+
     # Write to file
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(processed_data, f, indent=2, ensure_ascii=False)
-        
+
     print(f"[DEBUG] Logged Gemini request to {filename}", file=sys.stderr)
     return filename
 
