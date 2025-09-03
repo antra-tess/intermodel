@@ -1425,6 +1425,7 @@ async def complete(
 
                 # Process into intermediate format first
                 processed_messages = []
+                import re
                 sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
                 
                 # Extract text parts and image URLs
