@@ -1691,7 +1691,7 @@ async def complete(
             
             for msg in messages:
                 role = msg.get("role", "user")
-                content = msg.get("content", "")
+                content = strip_cache_breakpoints(msg.get("content", ""))
                 parts = []
                 
                 # Determine speaker name for formatting
@@ -1822,6 +1822,8 @@ async def complete(
         elif prompt is not None:
             # Process the prompt string into ProcessedMessage objects
             print(f"[DEBUG] Processing prompt string for Gemini", file=sys.stderr)
+            # Strip cache breakpoints from prompt
+            prompt = strip_cache_breakpoints(prompt)
             sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
                         
                         # Extract text parts and image URLs
