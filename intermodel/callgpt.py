@@ -636,12 +636,16 @@ async def complete(
                     message_history_format is not None
                     and message_history_format.is_chat() 
                 ):
-                    api_arguments["messages"] = message_history_format.format_messages(
-                        api_arguments["prompt"], "user"
-                    )
+                    # Format messages and strip cache breakpoints for non-Anthropic models
+                    messages = message_history_format.format_messages(api_arguments["prompt"], "user")
+                    # Strip cache breakpoints from all message content
+                    for message in messages:
+                        if isinstance(message.get("content"), str):
+                            message["content"] = strip_cache_breakpoints(message["content"])
+                    api_arguments["messages"] = messages
                     print(f"[DEBUG] used format_messages, message count: {len(api_arguments['messages'])}")
                 else:
-                    prompt_text = api_arguments.get("prompt", "")
+                    prompt_text = strip_cache_breakpoints(api_arguments.get("prompt", ""))
                     if "<|begin_of_img_url|>" in prompt_text:
                         # Multimodal message
                         content_parts = []
@@ -668,6 +672,11 @@ async def complete(
                         ]
                         print(f"[DEBUG] chat history sent as a single user message")
             else:
+                # Strip cache breakpoints from provided messages for non-Anthropic models
+                if messages:
+                    for message in messages:
+                        if isinstance(message.get("content"), str):
+                            message["content"] = strip_cache_breakpoints(message["content"])
                 api_arguments["messages"] = messages
                 print(f"[DEBUG] messages sent as is, message count: {len(api_arguments['messages'])}")
             if "prompt" in api_arguments:
@@ -736,6 +745,10 @@ async def complete(
         else:                
             api_suffix = "/completions"
             
+            # Strip cache breakpoints from prompt for completions API
+            if "prompt" in api_arguments and isinstance(api_arguments["prompt"], str):
+                api_arguments["prompt"] = strip_cache_breakpoints(api_arguments["prompt"])
+            
             # Handle message format conversion for chat → completions mode
             if message_history_format is not None and message_history_format.is_chat():
                 formatted_messages = []
@@ -753,8 +766,11 @@ async def complete(
                         text_parts = []
                         for item in content:
                             if item.get("type") == "text":
-                                text_parts.append(item.get("text", ""))
+                                text_parts.append(strip_cache_breakpoints(item.get("text", "")))
                         content = " ".join(text_parts)
+                    else:
+                        # Strip cache breakpoints from text content
+                        content = strip_cache_breakpoints(content)
                     
                     # Format based on role
                     if role == "system":
@@ -902,7 +918,7 @@ async def complete(
                     + kwargs.get("ai21_api_key", os.environ.get("AI21_API_KEY"))
                 },
                 json={
-                    "prompt": prompt,
+                    "prompt": strip_cache_breakpoints(prompt),
                     "numResults": num_completions or 1,
                     "maxTokens": max_tokens,
                     # "stopSequences": stop,
@@ -955,7 +971,7 @@ async def complete(
                     )
                 },
                 json={
-                    "inputs": prompt,
+                    "inputs": strip_cache_breakpoints(prompt),
                     "max_new_tokens": max_tokens,
                     "do_sample": True,
                     "top_p": top_p,
@@ -968,6 +984,8 @@ async def complete(
     elif vendor == "forefront":
         import httpx
 
+        # Strip cache breakpoints first
+        prompt = strip_cache_breakpoints(prompt)
         if "t5-20b" in model:
             prompt = prompt + " <extra_id_0>"
         async with httpx.AsyncClient() as client:
@@ -2511,6 +2529,20 @@ def process_message_with_cache_and_images(content_string: str, cache_type: str =
         all_parts.extend(section_parts)
     
     return all_parts
+
+
+def strip_cache_breakpoints(content_string):
+    """Remove cache breakpoint markers from content.
+    
+    Args:
+        content_string (str): The content that may contain cache breakpoint markers
+        
+    Returns:
+        str: Content with cache breakpoint markers removed
+    """
+    if isinstance(content_string, str):
+        return re.sub(r'<\|cache_breakpoint\|>', '', content_string)
+    return content_string
 
 
 def process_image_message(content_string, skip_gifs=False, role="user"):
