@@ -531,7 +531,7 @@ async def complete(
             "n": num_completions,
             **rest,
         }
-        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and model != "Hermes-4-405B" and not model.startswith("gpt-5"):
+        if not model.startswith("o1") and not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and not model.startswith("gpt-5"):
             api_arguments["max_tokens"] = max_tokens
         elif model.startswith("gpt-5"):
             api_arguments["max_completion_tokens"] = max_tokens
@@ -566,7 +566,7 @@ async def complete(
                 del api_arguments[key]
         # Limit stop sequences for OpenAI
         if "stop" in api_arguments and isinstance(api_arguments["stop"], list):
-            if not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and model != "Hermes-4-405B" and not model.startswith("gpt-5"):
+            if not model.startswith("o3") and not model.startswith("o4-mini") and model != "hermes-4-cot" and not model.startswith("gpt-5"):
                 if len(api_arguments["stop"]) > 4:
                     print(f"[DEBUG] OpenAI only supports up to 4 stop sequences. Truncating from {len(api_arguments['stop'])}.", file=sys.stderr)
                     api_arguments["stop"] = api_arguments["stop"][:4]
@@ -597,6 +597,10 @@ async def complete(
         is_anthropic_openrouter = model.startswith("anthropic/claude-")
         print(f"[DEBUG] is_anthropic_openrouter: {is_anthropic_openrouter}")
         
+        # Check if this is a nousresearch.com endpoint (requires completions mode for Hermes models)
+        is_nousresearch_endpoint = "nousresearch.com" in api_base
+        print(f"[DEBUG] is_nousresearch_endpoint: {is_nousresearch_endpoint}")
+        
         if (
             is_force_api_mode_chat(force_api_mode) or
             (not is_force_api_mode_completions(force_api_mode)) and (
@@ -622,7 +626,7 @@ async def complete(
                 model.startswith("o3") or
                 model.startswith("o4-mini") or
                 model.startswith("moonshotai/") or
-                model.startswith("hermes-4") or model == "Hermes-4-405B" or
+                (model.startswith("hermes-4") or model == "Hermes-4-405B") and not is_nousresearch_endpoint or
                 is_anthropic_openrouter
             )
         ) and not is_base_model:
