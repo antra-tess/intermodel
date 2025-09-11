@@ -2950,6 +2950,8 @@ def max_token_length_inner(model):
     elif model == "dall-e-2":
         # DALL-E 2 prompt limit is 1000 characters. Approx 4 chars/token => 250 tokens
         return 250
+    elif model == "deepcogito/cogito-v2-preview-deepseek-671b":
+        return 163840
     else:
         try:
             import huggingface_hub
