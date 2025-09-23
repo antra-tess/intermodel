@@ -2831,7 +2831,7 @@ def pick_vendor(model, custom_config=None):
     elif "/" in model:
         return "openai"
     else:
-        return "openai"  # Default fallthrough to OpenAI instead of raising error
+        raise NotImplementedError("Unknown model")
 
 
 def max_token_length(model):
