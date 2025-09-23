@@ -2668,7 +2668,7 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         else:
             #print(f"[DEBUG] Getting tokenizer for {model}", file=sys.stderr)
-            tokenizer = tiktoken.encoding_for_model(model)
+            tokenizer = tiktoken.encoding_for_model("gpt2")
             #sprint(f"[DEBUG] Tokenizer: {tokenizer}", file=sys.stderr)
         # encode special tokens as normal
         # XXX: make this an option
