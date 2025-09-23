@@ -2954,35 +2954,36 @@ def max_token_length_inner(model):
     elif model == "deepcogito/cogito-v2-preview-deepseek-671b":
         return 163840
     else:
-        try:
-            import huggingface_hub
+        return 163840
+        # try:
+        #     import huggingface_hub
 
-            try:
-                fname = huggingface_hub.hf_hub_download(
-                    model,
-                    "config.json",
-                    token=get_hf_auth_token(),
-                    local_files_only=True,
-                )
-            except LocalEntryNotFoundError:
-                fname = huggingface_hub.hf_hub_download(
-                    model,
-                    "config.json",
-                    token=get_hf_auth_token(),
-                    local_files_only=False,
-                )
+        #     try:
+        #         fname = huggingface_hub.hf_hub_download(
+        #             model,
+        #             "config.json",
+        #             token=get_hf_auth_token(),
+        #             local_files_only=True,
+        #         )
+        #     except LocalEntryNotFoundError:
+        #         fname = huggingface_hub.hf_hub_download(
+        #             model,
+        #             "config.json",
+        #             token=get_hf_auth_token(),
+        #             local_files_only=False,
+        #         )
 
-            with open(fname, "r") as f:
-                import json
+        #     with open(fname, "r") as f:
+        #         import json
 
-                data = json.load(f)
-            return data["max_position_embeddings"] + 1
-        except Exception as e:
-            raise NotImplementedError(
-                f"Unable to download {model} from HuggingFace. "
-                f"Are you logged into HuggingFace (`huggingface-cli login`) and have you agreed to the model license at"
-                f"`https://huggingface.co/{model}`?"
-            )
+        #         data = json.load(f)
+        #     return data["max_position_embeddings"] + 1
+        # except Exception as e:
+        #     raise NotImplementedError(
+        #         f"Unable to download {model} from HuggingFace. "
+        #         f"Are you logged into HuggingFace (`huggingface-cli login`) and have you agreed to the model license at"
+        #         f"`https://huggingface.co/{model}`?"
+        #     )
 
 
 class InteractiveIntermodel(cmd.Cmd):
