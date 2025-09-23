@@ -2829,9 +2829,9 @@ def pick_vendor(model, custom_config=None):
     elif model.startswith("hermes-4") or model == "Hermes-4-405B":
         return "openai"  # Hermes 4 models use OpenAI-compatible API
     elif "/" in model:
-        return "huggingface"
+        return "openai"
     else:
-        raise NotImplementedError("Unknown model")
+        return "openai"  # Default fallthrough to OpenAI instead of raising error
 
 
 def max_token_length(model):
