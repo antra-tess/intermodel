@@ -2679,28 +2679,29 @@ def tokenize(model: str, string: str) -> List[int]:
     elif model in untokenizable:
         return tokenize("gpt2", string)
     else:
-        try:
-            print(f"[DEBUG] Getting HF tokenizer for {model}", file=sys.stderr)
-            tokenizer = get_hf_tokenizer(model)
-        except Exception as e:
-            message = (
-                f"Failed to download tokenizer by looking up {model} as a huggingface model ID."
-                "To override the tokenizer, put the correct huggingface ID ^ after the model name and follow it with a max token cap."
-                "For example, to use OpenRouter Gemini while using the Gemma tokenizer with a maximum context window of 2 million Gemma tokens, use `google/gemini-pro-1.5^google/gemma-7b@2000000`"
-                "Using the incorrect tokenizer may lead to flakiness and intermittent failures. Some proprietary models have openly available tokenizers."
-            )
-            if e.__class__.__name__ == "GatedRepoError":
-                warnings.warn(
-                    message
-                    + f" Cause: GatedRepoError. Log in with huggingface-cli and accept the model ToS at https://huggingface.co/{model} to access the model tokenizer"
-                )
-            elif e.__class__.__name__ == "RepositoryNotFoundError":
-                warnings.warn(message + f" Cause: Not found on huggingface")
-            else:
-                warnings.warn(message)
-            return tokenize("gpt2", string)
-        else:
-            return tokenizer.encode(string).ids
+        return tokenize("gpt2", string)
+        # try:
+        #     print(f"[DEBUG] Getting HF tokenizer for {model}", file=sys.stderr)
+        #     tokenizer = get_hf_tokenizer(model)
+        # except Exception as e:
+        #     message = (
+        #         f"Failed to download tokenizer by looking up {model} as a huggingface model ID."
+        #         "To override the tokenizer, put the correct huggingface ID ^ after the model name and follow it with a max token cap."
+        #         "For example, to use OpenRouter Gemini while using the Gemma tokenizer with a maximum context window of 2 million Gemma tokens, use `google/gemini-pro-1.5^google/gemma-7b@2000000`"
+        #         "Using the incorrect tokenizer may lead to flakiness and intermittent failures. Some proprietary models have openly available tokenizers."
+        #     )
+        #     if e.__class__.__name__ == "GatedRepoError":
+        #         warnings.warn(
+        #             message
+        #             + f" Cause: GatedRepoError. Log in with huggingface-cli and accept the model ToS at https://huggingface.co/{model} to access the model tokenizer"
+        #         )
+        #     elif e.__class__.__name__ == "RepositoryNotFoundError":
+        #         warnings.warn(message + f" Cause: Not found on huggingface")
+        #     else:
+        #         warnings.warn(message)
+        #     return tokenize("gpt2", string)
+        # else:
+        #     return tokenizer.encode(string).ids
 
 
 @dataclasses.dataclass
