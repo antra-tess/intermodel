@@ -1311,8 +1311,13 @@ async def complete(
                 **kwargs,
             )
         else:
-            # Some newer Claude models don't support both temperature and top_p
-            if model == "claude-opus-4-1-20250805" or model == "claude-sonnet-4-5-20250929":
+            # Newer Claude models (4.1+) don't support both temperature and top_p
+            # Check if this is a Claude 4.x or higher model (not Claude 3.x)
+            is_newer_claude = (model.startswith("claude-") and 
+                             ("-4-" in model or "-5-" in model or "-6-" in model or 
+                              "-7-" in model or "-8-" in model or "-9-" in model))
+            
+            if is_newer_claude:
                 response = await client.messages.create(
                     model=model,
                     messages=messages,
@@ -1340,8 +1345,10 @@ async def complete(
             finish_reason = "stop"
         elif response.stop_reason == "max_tokens":
             finish_reason = "length"
+        else response.stop_reason == "refusal":
+            finish_reason = "refusal"
         else:
-            finish_reason = "unknown"
+            finish_reason = response.stop_reason
 
         # Extract thinking content and text if available
         reasoning_content = None
@@ -2669,7 +2676,11 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         else:
             #print(f"[DEBUG] Getting tokenizer for {model}", file=sys.stderr)
-            tokenizer = tiktoken.encoding_for_model("gpt2")
+            try:
+                tokenizer = tiktoken.encoding_for_model(model)
+            except KeyError:
+                # Fall back to gpt2 tokenizer for unknown models
+                tokenizer = tiktoken.get_encoding("gpt2")
             #sprint(f"[DEBUG] Tokenizer: {tokenizer}", file=sys.stderr)
         # encode special tokens as normal
         # XXX: make this an option
