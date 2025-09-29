@@ -1311,7 +1311,8 @@ async def complete(
                 **kwargs,
             )
         else:
-            if model == "claude-opus-4-1-20250805":
+            # Some newer Claude models don't support both temperature and top_p
+            if model == "claude-opus-4-1-20250805" or model == "claude-sonnet-4-5-20250929":
                 response = await client.messages.create(
                     model=model,
                     messages=messages,
