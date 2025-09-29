@@ -1345,7 +1345,7 @@ async def complete(
             finish_reason = "stop"
         elif response.stop_reason == "max_tokens":
             finish_reason = "length"
-        else response.stop_reason == "refusal":
+        elif response.stop_reason == "refusal":
             finish_reason = "refusal"
         else:
             finish_reason = response.stop_reason
