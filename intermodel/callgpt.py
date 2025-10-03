@@ -1250,6 +1250,18 @@ async def complete(
                 kwargs["extra_body"] = {"steering": kwargs["steering"]}
                 del kwargs["steering"]
         
+        # Add 1M context beta headers for models ending with -1m
+        if model.endswith("-1m"):
+            # Remove the -1m suffix from the model name for the actual API call
+            model = model[:-3]
+            if "extra_headers" not in kwargs:
+                kwargs["extra_headers"] = {}
+            existing_beta = kwargs["extra_headers"].get("anthropic-beta", "")
+            tokens = [t.strip() for t in existing_beta.split(",") if t.strip()]
+            if "context-1m-2025-08-07" not in tokens:
+                tokens.append("context-1m-2025-08-07")
+            kwargs["extra_headers"]["anthropic-beta"] = ", ".join(tokens)
+        
         # Add cache control beta headers if cache_breakpoints is enabled
         if cache_breakpoints:
             if "extra_headers" not in kwargs:
@@ -2640,7 +2652,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.get_encoding("gpt2")
         elif "deployedModel" in model: # Added for RunPod deployed models
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
-        elif model.startswith("anthropic/claude-") or model.startswith("anthropic.") or model.startswith("claude-3") or model == "claude-opus-4-1-20250805":
+        elif model.startswith("anthropic/claude-") or model.startswith("anthropic.") or model.startswith("claude-"):
+            # Handle all Claude models (including -1m suffix for 1M context beta)
             tokenizer = tiktoken.encoding_for_model("gpt2")
         elif model.startswith("o1") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("chatgpt-4o") or model.startswith("gpt-4o"):
             tokenizer = tiktoken.encoding_for_model("gpt-4o")
@@ -2830,7 +2843,7 @@ def pick_vendor(model, custom_config=None):
     elif model.startswith("anthropic/claude-"):
         return "openai"  # anthropic/ prefix models go through OpenRouter with OpenAI API
     elif model.startswith("claude-"):
-        return "anthropic"
+        return "anthropic"  # Includes claude-*-1m models for 1M context beta
     elif model.startswith("aion"):
         return "openai"  # aion models use OpenAI-compatible API
     elif model.startswith("google/"):
@@ -2921,6 +2934,9 @@ def max_token_length_inner(model):
         return 100_000 * 0.7
     elif model.startswith("anthropic/claude"):
         return 100_000 * 0.7
+    elif model.endswith("-1m"):
+        # 1M context beta models - strip suffix and use 1M context
+        return 1_000_000 * 0.7
     elif model.startswith("claude-3"):
         return 200_000 * 0.7
     elif model == "claude-opus-4-1-20250805":
