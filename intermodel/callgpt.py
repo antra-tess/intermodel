@@ -371,6 +371,7 @@ async def complete(
     log_dir="intermodel_logs",  # Add log_dir parameter with a default
     cache_breakpoints: bool = False,  # Enable cache breakpoint processing for Anthropic
     cache_type: str = "ephemeral",  # Type of cache control: "ephemeral", "5m", "1h"
+    min_p: Optional[float] = None,  # Minimum probability for sampling (used by K2/K3 models)
     **kwargs,
 ):
     modalities = kwargs.pop("modalities", None)
@@ -571,15 +572,25 @@ async def complete(
         
         # For K2/K3 models, strip optional parameters - keep only basics
         if is_k3_model:
+            # Prepend BOS token to prompt (sglang doesn't add it by default)
+            current_prompt = api_arguments.get("prompt", "")
+            if current_prompt and not current_prompt.startswith("[BOS]"):
+                api_arguments["prompt"] = "[BOS]" + current_prompt
+                print(f"[DEBUG] Added [BOS] token to K2/K3 prompt", file=sys.stderr)
+            
             minimal_args = {
                 "model": api_arguments.get("model"),
                 "prompt": api_arguments.get("prompt"),
             }
-            # Only add max_tokens and temperature if they were explicitly provided
+            # Only add max_tokens, temperature, and min_p if they were explicitly provided
             if max_tokens is not None:
                 minimal_args["max_tokens"] = max_tokens
             if temperature is not None:
                 minimal_args["temperature"] = temperature
+            # Support min_p parameter (minimum probability for sampling)
+            if min_p is not None:
+                minimal_args["min_p"] = min_p
+                print(f"[DEBUG] K2/K3: Adding min_p={min_p}", file=sys.stderr)
             api_arguments = minimal_args
             print(f"[DEBUG] NousResearch K2/K3 model detected, using minimal parameters: {list(api_arguments.keys())}", file=sys.stderr)
         
