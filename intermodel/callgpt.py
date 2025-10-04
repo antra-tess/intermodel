@@ -419,11 +419,11 @@ async def complete(
             headers["Authorization"] = f"Bearer {api_key}"
         api_base = rest.pop("api_base", "https://api.openai.com/v1")
         
-        # Special handling for NousResearch K3 models on experimental endpoint
-        is_k3_model = model.startswith("NousResearch/K3-")
+        # Special handling for NousResearch K2/K3 models on experimental endpoint
+        is_k3_model = model.startswith("NousResearch/K3-") or model.startswith("NousResearch/K2-")
         if is_k3_model:
             # api_base = "https://api.nousresearch.com/v1" # custom base via config
-            # Remove authorization header for K3 models (no API key required)
+            # Remove authorization header for K2/K3 models (no API key required)
             if "Authorization" in headers:
                 del headers["Authorization"]
 
@@ -569,7 +569,7 @@ async def complete(
                 if final_audio_settings:
                     api_arguments["audio"] = final_audio_settings
         
-        # For K3 models, strip optional parameters - keep only basics
+        # For K2/K3 models, strip optional parameters - keep only basics
         if is_k3_model:
             minimal_args = {
                 "model": api_arguments.get("model"),
@@ -581,7 +581,7 @@ async def complete(
             if temperature is not None:
                 minimal_args["temperature"] = temperature
             api_arguments = minimal_args
-            print(f"[DEBUG] K3 model detected, using minimal parameters: {list(api_arguments.keys())}", file=sys.stderr)
+            print(f"[DEBUG] NousResearch K2/K3 model detected, using minimal parameters: {list(api_arguments.keys())}", file=sys.stderr)
         
         # remove None values, OpenAI API doesn't like them
         for key, value in dict(api_arguments).items():
@@ -2710,8 +2710,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         elif model.startswith("moonshotai/"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
-        elif model.startswith("NousResearch/K3-"):
-            tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer for K3 models
+        elif model.startswith("NousResearch/K3-") or model.startswith("NousResearch/K2-"):
+            tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer for K2/K3 models
         else:
             #print(f"[DEBUG] Getting tokenizer for {model}", file=sys.stderr)
             try:
@@ -2913,8 +2913,8 @@ def max_token_length_inner(model):
         return 30_000  # 32k context window
     elif model.startswith("hermes-4") or model == "Hermes-4-405B":
         return 100_000  # 100k context window
-    elif model.startswith("NousResearch/K3-"):
-        return 130_000  # 130k context window for K3 models
+    elif model.startswith("NousResearch/K3-") or model.startswith("NousResearch/K2-"):
+        return 130_000  # 130k context window for K2/K3 models
     elif model == "code-davinci-002":
         return 8001
     elif model.startswith("code"):
