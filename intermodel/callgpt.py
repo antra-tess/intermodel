@@ -440,14 +440,14 @@ async def complete(
                 for msg_obj in messages:
                     content = msg_obj.get("content")
                     if isinstance(content, str):
-                        prompt_parts.append(content)
+                        prompt_parts.append(strip_cache_breakpoints(content))
                     elif isinstance(content, list):  # OpenAI multimodal message format
                         for part in content:
                             if part.get("type") == "text":
-                                prompt_parts.append(part.get("text", ""))
+                                prompt_parts.append(strip_cache_breakpoints(part.get("text", "")))
                 actual_prompt_for_image_gen = "\\n".join(prompt_parts).strip()
             elif prompt:  # prompt string kwarg from complete()
-                actual_prompt_for_image_gen = prompt
+                actual_prompt_for_image_gen = strip_cache_breakpoints(prompt)
             
             # Truncate prompt for gpt-image-1 if it exceeds 32000 characters
             if model == "gpt-image-1" and len(actual_prompt_for_image_gen) > 32000:
@@ -663,8 +663,14 @@ async def complete(
                     messages = message_history_format.format_messages(api_arguments["prompt"], "user")
                     # Strip cache breakpoints from all message content
                     for message in messages:
-                        if isinstance(message.get("content"), str):
-                            message["content"] = strip_cache_breakpoints(message["content"])
+                        content = message.get("content")
+                        if isinstance(content, str):
+                            message["content"] = strip_cache_breakpoints(content)
+                        elif isinstance(content, list):
+                            # Handle multimodal messages with content as list of parts
+                            for part in content:
+                                if part.get("type") == "text" and "text" in part:
+                                    part["text"] = strip_cache_breakpoints(part["text"])
                     api_arguments["messages"] = messages
                     print(f"[DEBUG] used format_messages, message count: {len(api_arguments['messages'])}")
                 else:
@@ -698,8 +704,14 @@ async def complete(
                 # Strip cache breakpoints from provided messages for non-Anthropic models
                 if messages:
                     for message in messages:
-                        if isinstance(message.get("content"), str):
-                            message["content"] = strip_cache_breakpoints(message["content"])
+                        content = message.get("content")
+                        if isinstance(content, str):
+                            message["content"] = strip_cache_breakpoints(content)
+                        elif isinstance(content, list):
+                            # Handle multimodal messages with content as list of parts
+                            for part in content:
+                                if part.get("type") == "text" and "text" in part:
+                                    part["text"] = strip_cache_breakpoints(part["text"])
                 api_arguments["messages"] = messages
                 print(f"[DEBUG] messages sent as is, message count: {len(api_arguments['messages'])}")
             if "prompt" in api_arguments:
@@ -3856,7 +3868,7 @@ async def prepare_openai_messages(
         else:
             # It's a regular text part
             if token.strip():
-                user_content_parts.append({"type": "text", "text": token})
+                user_content_parts.append({"type": "text", "text": strip_cache_breakpoints(token)})
 
     # 4. Add the final user message if it has any content parts
     if user_content_parts:
