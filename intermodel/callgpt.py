@@ -372,6 +372,7 @@ async def complete(
     cache_breakpoints: bool = False,  # Enable cache breakpoint processing for Anthropic
     cache_type: str = "ephemeral",  # Type of cache control: "ephemeral", "5m", "1h"
     min_p: Optional[float] = None,  # Minimum probability for sampling (used by K2/K3 models)
+    add_bos_token: bool = True,  # Whether to add [BOS] token for K2/K3 models (sglang doesn't add by default)
     **kwargs,
 ):
     modalities = kwargs.pop("modalities", None)
@@ -573,10 +574,13 @@ async def complete(
         # For K2/K3 models, strip optional parameters - keep only basics
         if is_k3_model:
             # Prepend BOS token to prompt (sglang doesn't add it by default)
-            current_prompt = api_arguments.get("prompt", "")
-            if current_prompt and not current_prompt.startswith("[BOS]"):
-                api_arguments["prompt"] = "[BOS]" + current_prompt
-                print(f"[DEBUG] Added [BOS] token to K2/K3 prompt", file=sys.stderr)
+            if add_bos_token:
+                current_prompt = api_arguments.get("prompt", "")
+                if current_prompt and not current_prompt.startswith("[BOS]"):
+                    api_arguments["prompt"] = "[BOS]" + current_prompt
+                    print(f"[DEBUG] Added [BOS] token to K2/K3 prompt", file=sys.stderr)
+            else:
+                print(f"[DEBUG] Skipping [BOS] token addition (add_bos_token=False)", file=sys.stderr)
             
             minimal_args = {
                 "model": api_arguments.get("model"),
