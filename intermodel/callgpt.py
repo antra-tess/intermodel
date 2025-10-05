@@ -586,7 +586,7 @@ async def complete(
                 "model": api_arguments.get("model"),
                 "prompt": api_arguments.get("prompt"),
             }
-            # Only add max_tokens, temperature, and min_p if they were explicitly provided
+            # Only add max_tokens, temperature, min_p, and repetition_penalty if they were explicitly provided
             if max_tokens is not None:
                 minimal_args["max_tokens"] = max_tokens
             if temperature is not None:
@@ -595,6 +595,10 @@ async def complete(
             if min_p is not None:
                 minimal_args["min_p"] = min_p
                 print(f"[DEBUG] K2/K3: Adding min_p={min_p}", file=sys.stderr)
+            # Support repetition_penalty parameter (controls repetition in generation)
+            if repetition_penalty is not None and repetition_penalty != 1:
+                minimal_args["repetition_penalty"] = repetition_penalty
+                print(f"[DEBUG] K2/K3: Adding repetition_penalty={repetition_penalty}", file=sys.stderr)
             api_arguments = minimal_args
             print(f"[DEBUG] NousResearch K2/K3 model detected, using minimal parameters: {list(api_arguments.keys())}", file=sys.stderr)
         
