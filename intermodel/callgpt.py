@@ -586,11 +586,14 @@ async def complete(
                 "model": api_arguments.get("model"),
                 "prompt": api_arguments.get("prompt"),
             }
-            # Only add max_tokens, temperature, min_p, and repetition_penalty if they were explicitly provided
+            # Only add max_tokens, temperature, top_p, min_p, repetition_penalty, and stop if they were explicitly provided
             if max_tokens is not None:
                 minimal_args["max_tokens"] = max_tokens
             if temperature is not None:
                 minimal_args["temperature"] = temperature
+            if top_p is not None:
+                minimal_args["top_p"] = top_p
+                print(f"[DEBUG] K2/K3: Adding top_p={top_p}", file=sys.stderr)
             # Support min_p parameter (minimum probability for sampling)
             if min_p is not None:
                 minimal_args["min_p"] = min_p
@@ -599,6 +602,10 @@ async def complete(
             if repetition_penalty is not None and repetition_penalty != 1:
                 minimal_args["repetition_penalty"] = repetition_penalty
                 print(f"[DEBUG] K2/K3: Adding repetition_penalty={repetition_penalty}", file=sys.stderr)
+            # Support stop sequences
+            if stop is not None and stop:
+                minimal_args["stop"] = stop
+                print(f"[DEBUG] K2/K3: Adding stop sequences: {stop}", file=sys.stderr)
             api_arguments = minimal_args
             print(f"[DEBUG] NousResearch K2/K3 model detected, using minimal parameters: {list(api_arguments.keys())}", file=sys.stderr)
         
