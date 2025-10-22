@@ -254,6 +254,28 @@ async def convert_to_bedrock_format(processed_msg: ProcessedMessage, session: Op
                         "type": "text",
                         "text": f"[Error processing image URL: {part.content}]"
                     })
+            elif part.content.startswith("data:"):
+                # Handle data URLs (e.g., data:image/png;base64,...)
+                try:
+                    import base64
+                    header, data = part.content.split(',', 1)
+                    # Extract mime type from data URL header
+                    mime_type = header.split(';')[0].split(':')[1] if ':' in header else (part.mime_type or "image/jpeg")
+                    
+                    content.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime_type,
+                            "data": data  # Data is already base64 in data URLs
+                        }
+                    })
+                except Exception as e:
+                    print(f"[ERROR] Failed to parse data URL for Bedrock: {str(e)}", file=sys.stderr)
+                    content.append({
+                        "type": "text",
+                        "text": f"[Error processing data URL image]"
+                    })
             else:
                 # Already base64 data, use as-is
                 content.append({
@@ -2362,8 +2384,11 @@ async def convert_messages_for_bedrock(messages: List[dict], session: Optional[a
                                 "type": "text",
                                 "text": f"[Error processing image URL]"
                             })
+                    elif source.get("type") == "base64":
+                        # Already base64, keep as-is
+                        new_content.append(part)
                     else:
-                        # Already base64 or other format, keep as-is
+                        # Unknown source type, keep as-is
                         new_content.append(part)
                 else:
                     # Non-image part, keep as-is
