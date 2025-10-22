@@ -1550,92 +1550,133 @@ async def complete(
 
                 # Process into intermediate format first
                 processed_messages = []
-                import re
-                sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
                 
-                # Extract text parts and image URLs
-                text_parts = []
-                image_urls = []
-                
-                for i, section in enumerate(sections):
-                    if i % 2 == 0 and section.strip():
-                        text_parts.append(section.strip())
-                    elif i % 2 == 1:  # Image URL
-                        image_urls.append(section.strip())
-                
-                # Respect max_images parameter
-                if max_images == 0:
-                    # If max_images is 0, don't process any images
-                    image_urls = []
-                    print(f"[DEBUG] No images allowed", file=sys.stderr)
-                elif max_images < len(image_urls):
-                    # Only keep the last max_images images
-                    image_urls = image_urls[-max_images:]
-                    print(f"[DEBUG] Limiting to {len(image_urls)} images", file=sys.stderr)
-                else:
-                    print(f"[DEBUG] Processing {len(image_urls)} images", file=sys.stderr)
-
-                # For non-chat mode with images, create appropriate message structure
-                if len(image_urls) > 0:
-                    # Create user message maintaining order of text and images
-                    user_msg_parts = []
-                    assistant_text_parts = []
-                    img_index = 0
-                    last_image_index = -1
+                if cache_breakpoints:
+                    # Process with cache marker support for prefill mode
+                    parts = process_message_with_cache_and_images(prompt, cache_type=cache_type)
                     
-                    # First find the last image section index
-                    for i, section in enumerate(sections):
-                        if i % 2 == 1:  # Image section
-                            if img_index < len(image_urls):
-                                last_image_index = i
-                                img_index += 1
+                    # In prefill mode, we need to split content appropriately
+                    # Content up to and including the last image goes to user message
+                    # Content after the last image goes to assistant message
+                    last_non_text_idx = -1
+                    for idx, part in enumerate(parts):
+                        if part.type != "text":
+                            last_non_text_idx = idx
                     
-                    # Reset image index for actual processing
-                    img_index = 0
-                    
-                    # Process all sections in order
-                    for i, section in enumerate(sections):
-                        if i % 2 == 0:  # Text section
-                            if section.strip():
-                                if last_image_index == -1 or i < last_image_index:
-                                    # Text before or between images goes to user message
-                                    user_msg_parts.append(MessagePart(
-                                        type="text",
-                                        content=section.strip()
-                                    ))
-                                else:
-                                    # Text after last image goes to assistant
-                                    assistant_text_parts.append(section.strip())
-                        else:  # Image section
-                            if img_index < len(image_urls):
-                                user_msg_parts.append(MessagePart(
-                                    type="image",
-                                    content=image_urls[img_index],
-                                    mime_type=guess_mime_type(image_urls[img_index])
-                                ))
-                                img_index += 1
-                    
-                    # Add user message with ordered content
-                    if user_msg_parts:
-                        processed_messages.append(ProcessedMessage(
-                            role="user",
-                            parts=user_msg_parts
-                        ))
-                    
-                    # Add combined text parts as assistant message
-                    assistant_text = " ".join(assistant_text_parts)
-                    processed_messages.append(ProcessedMessage(
-                        role="assistant",
-                        parts=[MessagePart(type="text", content=assistant_text)]
-                    ))
-                else:
-                    # No images - just add all text as assistant message
-                    text_parts_combined = " ".join(text_parts)
-                    if text_parts_combined:
+                    if last_non_text_idx == -1:
+                        # No images, all text goes to assistant message
                         processed_messages.append(ProcessedMessage(
                             role="assistant",
-                            parts=[MessagePart(type="text", content=text_parts_combined)]
+                            parts=parts
                         ))
+                    else:
+                        # Split at the last image
+                        user_parts = parts[:last_non_text_idx + 1]
+                        assistant_parts = parts[last_non_text_idx + 1:]
+                        
+                        if user_parts:
+                            processed_messages.append(ProcessedMessage(
+                                role="user",
+                                parts=user_parts
+                            ))
+                        if assistant_parts:
+                            processed_messages.append(ProcessedMessage(
+                                role="assistant",
+                                parts=assistant_parts
+                            ))
+                    
+                    # Skip the original image/text processing since we've already handled it
+                    skip_original_processing = True
+                else:
+                    skip_original_processing = False
+                    # Original processing without cache markers
+                    import re
+                    sections = re.split(r"<\|(?:begin|end)_of_img_url\|>", prompt)
+                    
+                    # Extract text parts and image URLs
+                    text_parts = []
+                    image_urls = []
+                
+                if not skip_original_processing:
+                    for i, section in enumerate(sections):
+                        if i % 2 == 0 and section.strip():
+                            text_parts.append(section.strip())
+                        elif i % 2 == 1:  # Image URL
+                            image_urls.append(section.strip())
+                    
+                    # Respect max_images parameter
+                    if max_images == 0:
+                        # If max_images is 0, don't process any images
+                        image_urls = []
+                        print(f"[DEBUG] No images allowed", file=sys.stderr)
+                    elif max_images < len(image_urls):
+                        # Only keep the last max_images images
+                        image_urls = image_urls[-max_images:]
+                        print(f"[DEBUG] Limiting to {len(image_urls)} images", file=sys.stderr)
+                    else:
+                        print(f"[DEBUG] Processing {len(image_urls)} images", file=sys.stderr)
+
+                    # For non-chat mode with images, create appropriate message structure
+                    if len(image_urls) > 0:
+                        # Create user message maintaining order of text and images
+                        user_msg_parts = []
+                        assistant_text_parts = []
+                        img_index = 0
+                        last_image_index = -1
+                        
+                        # First find the last image section index
+                        for i, section in enumerate(sections):
+                            if i % 2 == 1:  # Image section
+                                if img_index < len(image_urls):
+                                    last_image_index = i
+                                    img_index += 1
+                        
+                        # Reset image index for actual processing
+                        img_index = 0
+                        
+                        # Process all sections in order
+                        for i, section in enumerate(sections):
+                            if i % 2 == 0:  # Text section
+                                if section.strip():
+                                    if last_image_index == -1 or i < last_image_index:
+                                        # Text before or between images goes to user message
+                                        user_msg_parts.append(MessagePart(
+                                            type="text",
+                                            content=section.strip()
+                                        ))
+                                    else:
+                                        # Text after last image goes to assistant
+                                        assistant_text_parts.append(section.strip())
+                            else:  # Image section
+                                if img_index < len(image_urls):
+                                    user_msg_parts.append(MessagePart(
+                                        type="image",
+                                        content=image_urls[img_index],
+                                        mime_type=guess_mime_type(image_urls[img_index])
+                                    ))
+                                    img_index += 1
+                        
+                        # Add user message with ordered content
+                        if user_msg_parts:
+                            processed_messages.append(ProcessedMessage(
+                                role="user",
+                                parts=user_msg_parts
+                            ))
+                        
+                        # Add combined text parts as assistant message
+                        assistant_text = " ".join(assistant_text_parts)
+                        processed_messages.append(ProcessedMessage(
+                            role="assistant",
+                            parts=[MessagePart(type="text", content=assistant_text)]
+                        ))
+                    else:
+                        # No images - just add all text as assistant message
+                        text_parts_combined = " ".join(text_parts)
+                        if text_parts_combined:
+                            processed_messages.append(ProcessedMessage(
+                                role="assistant",
+                                parts=[MessagePart(type="text", content=text_parts_combined)]
+                            ))
 
                 # Convert all processed messages to Bedrock format with base64 encoding
                 import asyncio
