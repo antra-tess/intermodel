@@ -2769,7 +2769,7 @@ def tokenize(model: str, string: str) -> List[int]:
     if vendor == "openai" or vendor == "bedrock" or vendor == "aws-bedrock" or model == "gpt2" or model.startswith("anthropic/claude") or model.startswith("anthropic.") or model.startswith("claude-3") or model == "claude-opus-4-1-20250805" or model.startswith(
             "chatgpt-4o") or model.startswith("gpt-4o") or model.startswith("grok") or model.startswith("aion") or model.startswith(
             "DeepHermes") or model.startswith("google/gemma-3") or model.startswith("gemini-") or model.startswith(
-            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/") or model.startswith("hermes-4") or model == "Hermes-4-405B":
+            "deepseek") or model.startswith("deepseek/deepseek-r1") or model.startswith("deepseek-ai/DeepSeek-R1-Zero") or model.startswith("tngtech/deepseek") or model.startswith("gpt-image-1") or model.startswith("moonshotai/") or model.startswith("openrouter/") or model.startswith("hermes-4") or model == "Hermes-4-405B":
         # tiktoken internally caches loaded tokenizers
         #print(f"[DEBUG] Tokenizing {model} for OpenAI-compatible vendor or gpt2", file=sys.stderr) # Adjusted debug message
 
@@ -2814,6 +2814,8 @@ def tokenize(model: str, string: str) -> List[int]:
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
         elif model.startswith("moonshotai/"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer as approximation
+        elif model.startswith("openrouter/"):
+            tokenizer = tiktoken.encoding_for_model("gpt-4o")  # Use gpt-4o tokenizer for OpenRouter models
         elif model.startswith("NousResearch/K3-") or model.startswith("NousResearch/K2-"):
             tokenizer = tiktoken.encoding_for_model("gpt2")  # Use GPT-2 tokenizer for K2/K3 models
         else:
@@ -2983,6 +2985,8 @@ def pick_vendor(model, custom_config=None):
         return "openai"  # Moonshot models use OpenAI-compatible API
     elif model.startswith("hermes-4") or model == "Hermes-4-405B":
         return "openai"  # Hermes 4 models use OpenAI-compatible API
+    elif model.startswith("openrouter/"):
+        return "openai"  # OpenRouter models use OpenAI-compatible API
     elif "/" in model:
         return "openai"
     else:
@@ -3102,6 +3106,8 @@ def max_token_length_inner(model):
         if model == "moonshotai/kimi-k2":
             return 130000  # 130k context length
         return 130000  # Default for Moonshot models
+    elif model.startswith("openrouter/"):
+        return 200_000  # OpenRouter models have 200k context window
     elif "deployedModel" in model: # Added for RunPod deployed models
         return 64000
     elif model == "dall-e-3" or model == "gpt-image-1":
