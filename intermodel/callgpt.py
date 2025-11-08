@@ -766,6 +766,16 @@ async def complete(
                 del api_arguments["prompt"]
             if "logprobs" in api_arguments:
                 del api_arguments["logprobs"]
+            # Remove temperature, frequency_penalty, presence_penalty, and logit_bias for openrouter/polaris-alpja
+            if model == "openrouter/polaris-alpha":
+                if "temperature" in api_arguments:
+                    del api_arguments["temperature"]
+                if "presence_penalty" in api_arguments:
+                    del api_arguments["presence_penalty"]
+                if "frequency_penalty" in api_arguments:
+                    del api_arguments["frequency_penalty"]
+                if "logit_bias" in api_arguments:
+                    del api_arguments["logit_bias"]
             if model.startswith("o1") or model.startswith("deepseek") or api_base.startswith("https://integrate.api.nvidia.com") or model.startswith("aion") or model.startswith("grok") or model.startswith("o3") or model.startswith("o4-mini") or model.startswith("gpt-5") or model == "Hermes-4-405B":
                 if "logit_bias" in api_arguments:
                     del api_arguments["logit_bias"]
@@ -783,16 +793,7 @@ async def complete(
                         del api_arguments["presence_penalty"]
                     if "frequency_penalty" in api_arguments:
                         del api_arguments["frequency_penalty"]
-                # Remove temperature, frequency_penalty, presence_penalty, and logit_bias for openrouter/polaris-alpja
-                if model == "openrouter/polaris-alpha":
-                    if "temperature" in api_arguments:
-                        del api_arguments["temperature"]
-                    if "presence_penalty" in api_arguments:
-                        del api_arguments["presence_penalty"]
-                    if "frequency_penalty" in api_arguments:
-                        del api_arguments["frequency_penalty"]
-                    if "logit_bias" in api_arguments:
-                        del api_arguments["logit_bias"]
+
                 if (
                     model.startswith("o1")
                     or model.startswith("o3")
