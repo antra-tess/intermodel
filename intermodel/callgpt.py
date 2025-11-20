@@ -2143,7 +2143,7 @@ async def complete(
                     print(f"[DEBUG] Content {i + 1}: Unknown type: {type(content)}", file=sys.stderr)
 
         # Configure the request based on the model type
-        is_image_generation = model in ["gemini-2.0-flash-exp", "gemini-2.5-flash-image-preview"]
+        is_image_generation = model in ["gemini-2.0-flash-exp", "gemini-2.5-flash-image-preview", "gemini-3-pro-image-preview"]
 
         try:
             if is_image_generation:
@@ -3102,7 +3102,7 @@ def max_token_length_inner(model):
     elif model == "DeepHermes-3-Mistral-24B-Preview":
         return 31000
     elif model.startswith("gemini-"):
-        if model in ["gemini-2.0-flash-exp", "gemini-2.5-flash-image-preview"]:
+        if model in ["gemini-2.0-flash-exp", "gemini-2.5-flash-image-preview", "gemini-3-pro-image-preview"]:
             return 127000  # Image generation model has shorter context
         return 127000  # Standard Gemini models have 32k context
     elif model.startswith("moonshotai/"):
