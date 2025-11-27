@@ -170,9 +170,13 @@ def convert_to_openai_format(processed_msg: ProcessedMessage) -> dict:
         if part.type == "text":
             content.append({"type": "text", "text": part.content})
         elif part.type == "image":
+            # Sanitize URL by removing spaces after protocol (e.g., "https: //" -> "https://")
+            url_content = part.content
+            if isinstance(url_content, str):
+                url_content = re.sub(r'^(https?:)\s+//', r'\1//', url_content)
             content.append({
                 "type": "image_url",
-                "image_url": {"url": part.content}
+                "image_url": {"url": url_content}
             })
     return {"role": processed_msg.role, "content": content}
 
@@ -221,19 +225,24 @@ async def convert_to_bedrock_format(processed_msg: ProcessedMessage, session: Op
                 "text": part.content
             })
         elif part.type == "image":
+            # Sanitize URL by removing spaces after protocol (e.g., "https: //" -> "https://")
+            url_content = part.content
+            if isinstance(url_content, str):
+                url_content = re.sub(r'^(https?:)\s+//', r'\1//', url_content)
+            
             # For Bedrock, all images must be base64-encoded
-            if part.content.startswith(('http://', 'https://')):
+            if url_content.startswith(('http://', 'https://')):
                 # Download and convert URL to base64
                 try:
                     if session is None:
                         import aiohttp
                         async with aiohttp.ClientSession() as new_session:
-                            base64_data, mime_type = await download_and_encode_image_for_bedrock(part.content, new_session)
+                            base64_data, mime_type = await download_and_encode_image_for_bedrock(url_content, new_session)
                     else:
-                        base64_data, mime_type = await download_and_encode_image_for_bedrock(part.content, session)
+                        base64_data, mime_type = await download_and_encode_image_for_bedrock(url_content, session)
                     
                     if base64_data is None:
-                        print(f"[WARNING] Skipping invalid/inaccessible image URL for Bedrock: {part.content[:100]}{'...' if len(part.content) > 100 else ''}", file=sys.stderr)
+                        print(f"[WARNING] Skipping invalid/inaccessible image URL for Bedrock: {url_content[:100]}{'...' if len(url_content) > 100 else ''}", file=sys.stderr)
                         content.append({
                             "type": "text",
                             "text": f"[Image URL was not accessible and has been skipped]"
@@ -252,13 +261,13 @@ async def convert_to_bedrock_format(processed_msg: ProcessedMessage, session: Op
                     print(f"[ERROR] Failed to download image for Bedrock: {str(e)}", file=sys.stderr)
                     content.append({
                         "type": "text",
-                        "text": f"[Error processing image URL: {part.content}]"
+                        "text": f"[Error processing image URL: {url_content}]"
                     })
-            elif part.content.startswith("data:"):
+            elif url_content.startswith("data:"):
                 # Handle data URLs (e.g., data:image/png;base64,...)
                 try:
                     import base64
-                    header, data = part.content.split(',', 1)
+                    header, data = url_content.split(',', 1)
                     # Extract mime type from data URL header
                     mime_type = header.split(';')[0].split(':')[1] if ':' in header else (part.mime_type or "image/jpeg")
                     
@@ -283,7 +292,7 @@ async def convert_to_bedrock_format(processed_msg: ProcessedMessage, session: Op
                     "source": {
                         "type": "base64",
                         "media_type": part.mime_type or "image/jpeg",
-                        "data": part.content
+                        "data": url_content
                     }
                 })
     
@@ -325,12 +334,17 @@ async def convert_to_anthropic_format(processed_msg: ProcessedMessage, session: 
                 text_block["cache_control"] = part.cache_control
             content.append(text_block)
         elif part.type == "image":
+            # Sanitize URL by removing spaces after protocol (e.g., "https: //" -> "https://")
+            url_content = part.content
+            if isinstance(url_content, str):
+                url_content = re.sub(r'^(https?:)\s+//', r'\1//', url_content)
+            
             # For URLs, validate and use the URL source type
-            if part.content.startswith(('http://', 'https://')):
+            if url_content.startswith(('http://', 'https://')):
                 # Validate the URL is accessible
-                is_valid = await validate_image_url(part.content, session)
+                is_valid = await validate_image_url(url_content, session)
                 if not is_valid:
-                    print(f"[WARNING] Skipping invalid/inaccessible image URL: {part.content[:100]}{'...' if len(part.content) > 100 else ''}", file=sys.stderr)
+                    print(f"[WARNING] Skipping invalid/inaccessible image URL: {url_content[:100]}{'...' if len(url_content) > 100 else ''}", file=sys.stderr)
                     # Add a text message explaining the skipped image
                     content.append({
                         "type": "text",
@@ -342,7 +356,7 @@ async def convert_to_anthropic_format(processed_msg: ProcessedMessage, session: 
                     "type": "image",
                     "source": {
                         "type": "url",
-                        "url": part.content
+                        "url": url_content
                     }
                 })
             else:
@@ -352,7 +366,7 @@ async def convert_to_anthropic_format(processed_msg: ProcessedMessage, session: 
                     "source": {
                         "type": "base64",
                         "media_type": part.mime_type or "image/jpeg",  # Default to JPEG if not specified
-                        "data": part.content
+                        "data": url_content
                     }
                 })
     
@@ -735,6 +749,8 @@ async def complete(
                             else: # image url
                                 url = section.strip()
                                 if url:
+                                    # Sanitize URL by removing spaces after protocol
+                                    url = re.sub(r'^(https?:)\s+//', r'\1//', url)
                                     content_parts.append({"type": "image_url", "image_url": {"url": url}})
                         
                         api_arguments["messages"] = [{"role": "user", "content": content_parts}]
@@ -1939,6 +1955,8 @@ async def complete(
                             image_url_data = part_data.get("image_url", {})
                             url = image_url_data.get("url")
                             if url:
+                                # Sanitize URL by removing spaces after protocol
+                                url = re.sub(r'^(https?:)\s+//', r'\1//', url)
                                 # Check if data URL
                                 if url.startswith("data:"):
                                     # Handle data URLs (extract mime type and base64 data)
@@ -3938,6 +3956,8 @@ async def prepare_openai_messages(
             tag_type, url = img_audio_url_match.groups()
             url = url.strip()
             if not url: continue
+            # Sanitize URL by removing spaces after protocol
+            url = re.sub(r'^(https?:)\s+//', r'\1//', url)
             
             if tag_type == 'img':
                 user_content_parts.append({"type": "image_url", "image_url": {"url": url}})
