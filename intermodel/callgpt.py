@@ -751,7 +751,11 @@ async def complete(
                                 if url:
                                     # Sanitize URL by removing spaces after protocol
                                     url = re.sub(r'^(https?:)\s+//', r'\1//', url)
-                                    content_parts.append({"type": "image_url", "image_url": {"url": url}})
+                                    # Only add if it's actually a valid URL (not a truncated path)
+                                    if url.startswith(('http://', 'https://')):
+                                        content_parts.append({"type": "image_url", "image_url": {"url": url}})
+                                    else:
+                                        print(f"[WARNING] Skipping invalid image URL (not a full URL): {url[:100]}...", file=sys.stderr)
                         
                         api_arguments["messages"] = [{"role": "user", "content": content_parts}]
                         print(f"[DEBUG] chat history sent as a single multimodal user message")
@@ -2119,6 +2123,24 @@ async def complete(
                             from PIL import Image
                             from io import BytesIO
                             image = Image.open(BytesIO(image_bytes))
+                            
+                            # Convert palette mode (P) or RGBA images to RGB for JPEG compatibility
+                            # The Google GenAI library internally converts images to JPEG which doesn't support these modes
+                            if image.mode in ('P', 'PA'):
+                                # For palette mode, convert to RGBA first to preserve transparency, then to RGB
+                                image = image.convert('RGBA').convert('RGB')
+                                print(f"[DEBUG] Converted palette mode image to RGB", file=sys.stderr)
+                            elif image.mode == 'RGBA':
+                                # For RGBA, convert to RGB (composite on white background)
+                                background = Image.new('RGB', image.size, (255, 255, 255))
+                                background.paste(image, mask=image.split()[3])  # Use alpha channel as mask
+                                image = background
+                                print(f"[DEBUG] Converted RGBA image to RGB", file=sys.stderr)
+                            elif image.mode not in ('RGB', 'L'):
+                                # For any other unsupported mode, convert to RGB
+                                image = image.convert('RGB')
+                                print(f"[DEBUG] Converted {image.mode} image to RGB", file=sys.stderr)
+                            
                             gemini_contents.append(image)
                             print(f"[DEBUG] Added image chunk: {image.size} ({image.mode})", file=sys.stderr)
 
